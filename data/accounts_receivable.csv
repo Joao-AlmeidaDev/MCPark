@@ -103,3 +103,5 @@ id,subscription_id,customer_id,description,amount,due_date,payment_date,status,p
 102,102,100,Assinatura Plano 4 - Sandra Costa - C200,280.0,2025-12-12,2025-11-20,pago,pix,Gerado automaticamente da assinatura #102,2025-11-20 21:52:16,2025-11-20 22:09:50
 103,103,101,Assinatura Plano 3 - Marcos Oliveira - 320i,260.0,2025-12-07,2025-11-20,pago,pix,Gerado automaticamente da assinatura #103,2025-11-20 21:52:16,2025-11-20 22:09:50
 104,104,102,Assinatura Plano 4 - Sandra Costa - C200,280.0,2025-12-11,2025-11-20,pago,pix,Gerado automaticamente da assinatura #104,2025-11-20 21:52:16,2025-11-20 22:09:50
+105,105,103,Assinatura Plano 1 - João Pedro Garcia Almeida - Fiesta,160.0,2026-01-10,,pendente,,Gerado automaticamente da assinatura #105,2025-11-24 17:00:42,
+106,106,104,Assinatura Plano 4 - Samir - Calssic,280.0,2026-01-23,,pendente,,Gerado automaticamente da assinatura #106,2025-11-24 17:49:00,

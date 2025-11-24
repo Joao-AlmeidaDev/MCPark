@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard Administrativo - Estacione+{% endblock %}
+{% block title %}Dashboard Administrativo - MC PARK MANAGER{% endblock %}
 {% block content %}
 <style>
     .page-header {
@@ -131,10 +131,13 @@
                 <p class="mb-0 mt-1">Bem-vindo ao painel administrativo</p>
             </div>
             <div>
-                <a href="{{ url_for('add_customer') }}" class="btn-add">
+                <a href="#" class="btn-add" data-bs-toggle="modal" data-bs-target="#newCustomerModal">
                     <i class="bi bi-person-plus me-2"></i>Novo Cliente
                 </a>
-                <a href="{{ url_for('add_subscription') }}" class="btn-add">
+                <a href="#" class="btn-add" data-bs-toggle="modal" data-bs-target="#newVehicleModal">
+                    <i class="bi bi-car-front me-2"></i>Novo Veículo
+                </a>
+                <a href="#" class="btn-add" data-bs-toggle="modal" data-bs-target="#newSubscriptionModal">
                     <i class="bi bi-plus-circle me-2"></i>Nova Assinatura
                 </a>
             </div>
@@ -269,10 +272,472 @@
     </div>
 </div>
 
+<!-- Modal Novo Cliente -->
+<div class="modal fade" id="newCustomerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">
+                    <i class="bi bi-person-plus text-primary me-2"></i>Novo Cliente
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('add_customer') }}" method="POST">
+                <input type="hidden" name="from_dashboard" value="1">
+                <div class="modal-body">
+                    <!-- Dados Pessoais -->
+                    <h6 class="mb-3 text-primary"><i class="bi bi-person me-2"></i>Dados Pessoais</h6>
+                    
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Nome Completo <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" name="name" 
+                                   placeholder="Nome completo do cliente" required>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Email <span class="text-danger">*</span>
+                            </label>
+                            <input type="email" class="form-control" name="email" 
+                                   placeholder="email@exemplo.com" required>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Telefone <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control phone" name="phone" 
+                                   placeholder="(00) 00000-0000" maxlength="15" required>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Telefone 2</label>
+                            <input type="text" class="form-control phone" name="phone2" 
+                                   placeholder="(00) 00000-0000" maxlength="15">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                CPF <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control cpf" name="cpf" 
+                                   placeholder="000.000.000-00" maxlength="14" required>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">RG</label>
+                            <input type="text" class="form-control" name="rg" 
+                                   placeholder="00.000.000-0" maxlength="20">
+                        </div>
+                        
+                        <div class="col-md-12">
+                            <label class="form-label">Data de Nascimento</label>
+                            <input type="date" class="form-control" name="birth_date">
+                        </div>
+                    </div>
+                    
+                    <!-- Endereço -->
+                    <h6 class="mb-3 text-primary"><i class="bi bi-geo-alt me-2"></i>Endereço</h6>
+                    
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label">CEP</label>
+                            <input type="text" class="form-control cep" name="cep" 
+                                   placeholder="00000-000" maxlength="9">
+                        </div>
+                        
+                        <div class="col-md-8">
+                            <label class="form-label">Rua</label>
+                            <input type="text" class="form-control" name="street" 
+                                   placeholder="Nome da rua">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Número</label>
+                            <input type="text" class="form-control" name="number" 
+                                   placeholder="123">
+                        </div>
+                        
+                        <div class="col-md-8">
+                            <label class="form-label">Complemento</label>
+                            <input type="text" class="form-control" name="complement" 
+                                   placeholder="Apto, Bloco, etc.">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Bairro</label>
+                            <input type="text" class="form-control" name="neighborhood" 
+                                   placeholder="Bairro">
+                        </div>
+                        
+                        <div class="col-md-5">
+                            <label class="form-label">Cidade</label>
+                            <input type="text" class="form-control" name="city" 
+                                   placeholder="Cidade">
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Estado</label>
+                            <select class="form-select" name="state">
+                                <option value="">Selecione</option>
+                                <option value="AC">AC</option>
+                                <option value="AL">AL</option>
+                                <option value="AP">AP</option>
+                                <option value="AM">AM</option>
+                                <option value="BA">BA</option>
+                                <option value="CE">CE</option>
+                                <option value="DF">DF</option>
+                                <option value="ES">ES</option>
+                                <option value="GO">GO</option>
+                                <option value="MA">MA</option>
+                                <option value="MT">MT</option>
+                                <option value="MS">MS</option>
+                                <option value="MG">MG</option>
+                                <option value="PA">PA</option>
+                                <option value="PB">PB</option>
+                                <option value="PR">PR</option>
+                                <option value="PE">PE</option>
+                                <option value="PI">PI</option>
+                                <option value="RJ">RJ</option>
+                                <option value="RN">RN</option>
+                                <option value="RS">RS</option>
+                                <option value="RO">RO</option>
+                                <option value="RR">RR</option>
+                                <option value="SC">SC</option>
+                                <option value="SP">SP</option>
+                                <option value="SE">SE</option>
+                                <option value="TO">TO</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Observações e Status -->
+                    <h6 class="mb-3 text-primary"><i class="bi bi-chat-left-text me-2"></i>Observações e Status</h6>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Observações</label>
+                            <textarea class="form-control" name="notes" rows="3" 
+                                      placeholder="Informações adicionais sobre o cliente..."></textarea>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">
+                                Status <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" name="status" required>
+                                <option value="ativo" selected>Ativo</option>
+                                <option value="inativo">Inativo</option>
+                                <option value="inadimplente">Inadimplente</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3 mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <small>Campos marcados com <span class="text-danger">*</span> são obrigatórios</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Salvar Cliente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nova Assinatura -->
+<div class="modal fade" id="newSubscriptionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle text-primary me-2"></i>Nova Assinatura
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('add_subscription') }}" method="POST" id="newSubscriptionFormDash">
+                <input type="hidden" name="from_dashboard" value="1">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Cliente *</label>
+                            <select class="form-control" name="customer_id" id="dash_customer_select" required>
+                                <option value="">Selecione um cliente</option>
+                                {% if customers %}
+                                    {% for customer in customers %}
+                                    <option value="{{ customer.id }}">{{ customer.name }}</option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="" disabled>Nenhum cliente cadastrado</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Veículo *</label>
+                            <select class="form-control" name="vehicle_id" id="dash_vehicle_select" required disabled>
+                                <option value="">Selecione o cliente primeiro</option>
+                            </select>
+                            <small class="text-muted d-block mt-1">
+                                <i class="bi bi-info-circle"></i> Primeiro selecione o cliente
+                            </small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Plano *</label>
+                            <select class="form-control" name="plan_id" id="dash_plan_select" required>
+                                <option value="">Selecione um plano</option>
+                                {% if plans %}
+                                    {% for plan in plans %}
+                                    <option value="{{ plan.id }}" data-price="{{ plan.price }}" data-name="{{ plan.name }}">
+                                        {{ plan.name }} - R$ {{ "%.2f"|format(plan.price) }}
+                                    </option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="" disabled>Nenhum plano ativo cadastrado</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Data de Início *</label>
+                            <input type="date" class="form-control" name="start_date" id="dash_start_date" required>
+                        </div>
+                        
+                        <div class="col-12" id="dash_calculation_info" style="display: none;">
+                            <div class="alert alert-info mb-0">
+                                <i class="bi bi-calculator"></i>
+                                <strong>Cálculo:</strong>
+                                <span id="dash_calc_text"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Criar Assinatura
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Novo Veículo -->
+<div class="modal fade" id="newVehicleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">
+                    <i class="bi bi-car-front text-primary me-2"></i>Novo Veículo
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('add_vehicle') }}" method="POST">
+                <input type="hidden" name="from_dashboard" value="1">
+                <div class="modal-body">
+                    <!-- Dados do Veículo -->
+                    <h6 class="mb-3 text-primary"><i class="bi bi-info-circle me-2"></i>Dados do Veículo</h6>
+                    
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Placa <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control text-uppercase" name="plate" 
+                                   placeholder="AAA-0000" maxlength="8" required>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Proprietário <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" name="customer_id" required>
+                                <option value="">Selecione um proprietário</option>
+                                {% if customers %}
+                                    {% for customer in customers %}
+                                    <option value="{{ customer.id }}">{{ customer.name }}</option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="" disabled>Nenhum cliente cadastrado</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Marca <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" name="brand" 
+                                   placeholder="Ex: Fiat, Volkswagen, Toyota" required>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Modelo <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" name="model" 
+                                   placeholder="Ex: Gol, Palio, Corolla" required>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Cor</label>
+                            <input type="text" class="form-control" name="color_name" 
+                                   placeholder="Ex: Prata, Preto, Branco">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Ano</label>
+                            <input type="number" class="form-control" name="year" 
+                                   placeholder="2024" min="1900" max="2100">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-select" name="type">
+                                <option value="">Selecione</option>
+                                <option value="carro">Carro</option>
+                                <option value="moto">Moto</option>
+                                <option value="caminhao">Caminhão</option>
+                                <option value="van">Van</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Documentos -->
+                    <h6 class="mb-3 text-primary"><i class="bi bi-file-text me-2"></i>Documentos</h6>
+                    
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">RENAVAM</label>
+                            <input type="text" class="form-control" name="renavam" 
+                                   placeholder="Número do RENAVAM">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Chassi</label>
+                            <input type="text" class="form-control text-uppercase" name="chassis" 
+                                   placeholder="Número do Chassi">
+                        </div>
+                    </div>
+                    
+                    <!-- Observações -->
+                    <h6 class="mb-3 text-primary"><i class="bi bi-chat-left-text me-2"></i>Observações</h6>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Observações</label>
+                            <textarea class="form-control" name="notes" rows="3" 
+                                      placeholder="Informações adicionais sobre o veículo..."></textarea>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label class="form-label">
+                                Status <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" name="status" required>
+                                <option value="ativo" selected>Ativo</option>
+                                <option value="inativo">Inativo</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3 mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <small>Campos marcados com <span class="text-danger">*</span> são obrigatórios</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Cadastrar Veículo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Formata a placa enquanto digita
+$(document).on('input', 'input[name="plate"]', function() {
+    let value = $(this).val().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    
+    if (value.length > 7) {
+        value = value.substring(0, 7);
+    }
+    
+    if (value.length > 3) {
+        value = value.substring(0, 3) + '-' + value.substring(3);
+    }
+    
+    $(this).val(value);
+});
+
+// Script para carregar veículos do cliente selecionado (Assinatura)
+$('#dash_customer_select').on('change', function() {
+    const customerId = $(this).val();
+    const vehicleSelect = $('#dash_vehicle_select');
+    
+    console.log('Cliente selecionado:', customerId);
+    
+    if (!customerId) {
+        vehicleSelect.prop('disabled', true).html('<option value="">Selecione o cliente primeiro</option>');
+        return;
+    }
+    
+    // Faz requisição para buscar veículos do cliente
+    $.ajax({
+        url: `/api/vehicles/by_customer/${customerId}`,
+        method: 'GET',
+        success: function(data) {
+            console.log('Veículos recebidos:', data);
+            vehicleSelect.prop('disabled', false);
+            
+            // Aceita tanto array direto quanto objeto com propriedade vehicles
+            const vehicles = Array.isArray(data) ? data : (data.vehicles || []);
+            console.log('Veículos processados:', vehicles);
+            
+            if (vehicles && vehicles.length > 0) {
+                let options = '<option value="">Selecione um veículo</option>';
+                vehicles.forEach(function(vehicle) {
+                    console.log('Adicionando veículo:', vehicle);
+                    options += `<option value="${vehicle.id}">${vehicle.plate.toUpperCase()} - ${vehicle.model}</option>`;
+                });
+                vehicleSelect.html(options);
+            } else {
+                console.log('Nenhum veículo encontrado para este cliente');
+                vehicleSelect.html('<option value="">Nenhum veículo cadastrado para este cliente</option>');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Erro ao carregar veículos:', error);
+            console.error('Status:', status);
+            console.error('Response:', xhr.responseText);
+            vehicleSelect.html('<option value="">Erro ao carregar veículos</option>');
+        }
+    });
+});
+</script>
+
 <script>
 // Dados dos gráficos vindos do backend
 const financialChartData = {{ financial_chart_data | tojson | safe }};

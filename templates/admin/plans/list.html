@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Planos - Estacione+{% endblock %}
+{% block title %}Planos - MC PARK MANAGER{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -7,6 +7,41 @@
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newPlanModal">
             <i class="bi bi-plus-circle"></i> Novo Plano
         </button>
+    </div>
+    
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-6">
+                    <label for="search" class="form-label">
+                        <i class="bi bi-search"></i> Buscar
+                    </label>
+                    <input type="text" class="form-control" id="search" name="search" 
+                           value="{{ request.args.get('search', '') }}" 
+                           placeholder="Nome ou descrição do plano"
+                           autocomplete="off">
+                </div>
+                <div class="col-md-3">
+                    <label for="status" class="form-label">
+                        <i class="bi bi-funnel"></i> Status
+                    </label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">Todos</option>
+                        <option value="ativo" {{ 'selected' if request.args.get('status') == 'ativo' else '' }}>Ativos</option>
+                        <option value="inativo" {{ 'selected' if request.args.get('status') == 'inativo' else '' }}>Inativos</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    <a href="{{ url_for('list_plans') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> Limpar
+                    </a>
+                </div>
+            </form>
+        </div>
     </div>
     
     <div class="row">
@@ -44,11 +79,60 @@
         {% else %}
         <div class="col-12">
             <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Nenhum plano cadastrado ainda.
+                <i class="bi bi-info-circle"></i> 
+                {% if request.args.get('search') or request.args.get('status') %}
+                    Nenhum plano corresponde aos filtros aplicados.
+                    <a href="{{ url_for('list_plans') }}" class="alert-link">Limpar filtros</a>
+                {% else %}
+                    Nenhum plano cadastrado ainda.
+                {% endif %}
             </div>
         </div>
         {% endfor %}
     </div>
+    
+    <!-- Paginação -->
+    {% if total_pages > 1 %}
+    <div class="d-flex justify-content-between align-items-center mt-4">
+        <div class="text-muted">
+            Mostrando {{ ((page - 1) * 15) + 1 }} - {{ [page * 15, total]|min }} de {{ total }} planos
+        </div>
+        <nav aria-label="Navegação de páginas">
+            <ul class="pagination mb-0">
+                <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                    <a class="page-link" href="{{ url_for('list_plans', page=1, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&laquo;&laquo;</a>
+                </li>
+                <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                    <a class="page-link" href="{{ url_for('list_plans', page=page-1, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&laquo;</a>
+                </li>
+                
+                {% set start_page = [1, page - 2]|max %}
+                {% set end_page = [total_pages, page + 2]|min %}
+                
+                {% if start_page > 1 %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+                
+                {% for p in range(start_page, end_page + 1) %}
+                    <li class="page-item {{ 'active' if p == page else '' }}">
+                        <a class="page-link" href="{{ url_for('list_plans', page=p, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">{{ p }}</a>
+                    </li>
+                {% endfor %}
+                
+                {% if end_page < total_pages %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+                
+                <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                    <a class="page-link" href="{{ url_for('list_plans', page=page+1, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&raquo;</a>
+                </li>
+                <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                    <a class="page-link" href="{{ url_for('list_plans', page=total_pages, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&raquo;&raquo;</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Modal Novo Plano -->
@@ -150,6 +234,19 @@
 
 {% block extra_js %}
 <script>
+// Filtro em tempo real - submete o formulário ao mudar status
+$('#status').on('change', function() {
+    $(this).closest('form').submit();
+});
+
+// Filtro com Enter no campo de busca
+$('#search').on('keypress', function(e) {
+    if (e.which === 13) { // Enter
+        e.preventDefault();
+        $(this).closest('form').submit();
+    }
+});
+
 // Preencher modal de edição
 $(document).on('click', '.edit-plan-btn', function() {
     const planId = $(this).data('id');

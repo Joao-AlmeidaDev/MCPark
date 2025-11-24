@@ -1,7 +1,7 @@
 import os
 import sys
 from datetime import datetime, timedelta
-from functools import wraps
+from functools import wraps, lru_cache
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import pandas as pd
@@ -12,6 +12,8 @@ from wtforms import (StringField, PasswordField, SubmitField, TextAreaField,
                     SelectField, DateField, DecimalField, IntegerField, HiddenField)
 from wtforms.validators import DataRequired, Email, Optional, NumberRange, Length
 from dateutil.relativedelta import relativedelta
+import time
+from threading import Lock
 
 # --- Configuração do Aplicativo ---
 app = Flask(__name__)
@@ -25,6 +27,12 @@ login_manager.login_view = 'login'
 
 # Constantes
 DATA_DIR = app.config['DATA_DIR']
+
+# Sistema de cache global
+CSV_CACHE = {}
+CACHE_LOCK = Lock()
+CACHE_TIMEOUT = 30  # Cache expira em 30 segundos
+CACHE_TIMESTAMPS = {}
 
 # --- Filtros Jinja2 ---
 @app.template_filter('format_cpf')
@@ -97,11 +105,58 @@ def format_datetime_filter(datetime_obj):
 def format_currency(value):
     return f'R$ {value:,.2f}'.replace('.', '|').replace(',', '.').replace('|', ',')
 
+def read_csv_cached(filename, force_reload=False):
+    """Lê arquivo CSV com cache para melhorar performance"""
+    global CSV_CACHE, CACHE_TIMESTAMPS
+    
+    filepath = os.path.join(DATA_DIR, filename)
+    current_time = time.time()
+    
+    with CACHE_LOCK:
+        # Verifica se o cache existe e não expirou
+        if not force_reload and filename in CSV_CACHE:
+            cache_age = current_time - CACHE_TIMESTAMPS.get(filename, 0)
+            if cache_age < CACHE_TIMEOUT:
+                return CSV_CACHE[filename].copy()
+        
+        # Lê o arquivo e armazena no cache
+        try:
+            df = pd.read_csv(filepath)
+            # Otimiza tipos de dados para reduzir memória
+            for col in df.columns:
+                if df[col].dtype == 'float64':
+                    df[col] = pd.to_numeric(df[col], downcast='float', errors='ignore')
+                elif df[col].dtype == 'int64':
+                    df[col] = pd.to_numeric(df[col], downcast='integer', errors='ignore')
+            
+            CSV_CACHE[filename] = df
+            CACHE_TIMESTAMPS[filename] = current_time
+            return df.copy()
+        except FileNotFoundError:
+            return pd.DataFrame()
+
+def invalidate_cache(filename=None):
+    """Invalida o cache de um arquivo específico ou de todos"""
+    global CSV_CACHE, CACHE_TIMESTAMPS
+    with CACHE_LOCK:
+        if filename:
+            CSV_CACHE.pop(filename, None)
+            CACHE_TIMESTAMPS.pop(filename, None)
+        else:
+            CSV_CACHE.clear()
+            CACHE_TIMESTAMPS.clear()
+
+def save_csv_and_invalidate(df, filename):
+    """Salva CSV e invalida o cache"""
+    filepath = os.path.join(DATA_DIR, filename)
+    df.to_csv(filepath, index=False)
+    invalidate_cache(filename)
+
 def get_next_id(filename):
     try:
-        df = pd.read_csv(os.path.join(DATA_DIR, filename))
-        return df['id'].max() + 1 if not df.empty else 1
-    except (FileNotFoundError, KeyError):
+        df = read_csv_cached(filename)
+        return int(df['id'].max() + 1) if not df.empty else 1
+    except (KeyError, ValueError):
         return 1
 
 # --- Funções de Decorador ---
@@ -225,15 +280,21 @@ class User(UserMixin):
 
 def get_user_by_id(user_id):
     try:
-        users_df = pd.read_csv(os.path.join(DATA_DIR, 'users.csv'))
-        user_data = users_df[users_df['id'] == int(user_id)].iloc[0]
+        users_df = read_csv_cached('users.csv')
+        if users_df.empty:
+            return None
+        # Usar loc é mais rápido que filtragem booleana para um único resultado
+        user_data = users_df.loc[users_df['id'] == int(user_id)]
+        if user_data.empty:
+            return None
+        user_data = user_data.iloc[0]
         return User(
-            id=user_data['id'], 
+            id=int(user_data['id']), 
             username=user_data['username'], 
             role=user_data['role'],
             name=user_data.get('name', '')
         )
-    except (FileNotFoundError, IndexError, KeyError):
+    except (IndexError, KeyError, ValueError):
         return None
 
 @login_manager.user_loader
@@ -242,30 +303,42 @@ def load_user(user_id):
 
 def get_customer_by_id(customer_id):
     try:
-        customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
-        return customers_df[customers_df['id'] == int(customer_id)].iloc[0].to_dict()
-    except (FileNotFoundError, IndexError, KeyError):
+        customers_df = read_csv_cached('customers.csv')
+        if customers_df.empty:
+            return None
+        result = customers_df.loc[customers_df['id'] == int(customer_id)]
+        return result.iloc[0].to_dict() if not result.empty else None
+    except (IndexError, KeyError, ValueError):
         return None
 
 def get_vehicle_by_id(vehicle_id):
     try:
-        vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        return vehicles_df[vehicles_df['id'] == int(vehicle_id)].iloc[0].to_dict()
-    except (FileNotFoundError, IndexError, KeyError):
+        vehicles_df = read_csv_cached('vehicles.csv')
+        if vehicles_df.empty:
+            return None
+        result = vehicles_df.loc[vehicles_df['id'] == int(vehicle_id)]
+        return result.iloc[0].to_dict() if not result.empty else None
+    except (IndexError, KeyError, ValueError):
         return None
 
 def get_plan_by_id(plan_id):
     try:
-        plans_df = pd.read_csv(os.path.join(DATA_DIR, 'plans.csv'))
-        return plans_df[plans_df['id'] == int(plan_id)].iloc[0].to_dict()
-    except (FileNotFoundError, IndexError, KeyError):
+        plans_df = read_csv_cached('plans.csv')
+        if plans_df.empty:
+            return None
+        result = plans_df.loc[plans_df['id'] == int(plan_id)]
+        return result.iloc[0].to_dict() if not result.empty else None
+    except (IndexError, KeyError, ValueError):
         return None
 
 def get_subscription_by_id(subscription_id):
     try:
-        subs_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
-        return subs_df[subs_df['id'] == int(subscription_id)].iloc[0].to_dict()
-    except (FileNotFoundError, IndexError, KeyError):
+        subs_df = read_csv_cached('subscriptions.csv')
+        if subs_df.empty:
+            return None
+        result = subs_df.loc[subs_df['id'] == int(subscription_id)]
+        return result.iloc[0].to_dict() if not result.empty else None
+    except (IndexError, KeyError, ValueError):
         return None
 
 def get_financial_summary():
@@ -280,31 +353,36 @@ def get_financial_summary():
     
     try:
         # Cálculo de receitas e despesas do mês atual
-        transactions_df = pd.read_csv(os.path.join(DATA_DIR, 'financial_transactions.csv'))
-        transactions_df['date'] = pd.to_datetime(transactions_df['date'])
-        
-        current_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        monthly_transactions = transactions_df[transactions_df['date'] >= current_month]
-        
-        if not monthly_transactions.empty:
-            summary['receita_mensal'] = monthly_transactions[monthly_transactions['type'] == 'receita']['amount'].sum()
-            summary['despesa_mensal'] = monthly_transactions[monthly_transactions['type'] == 'despesa']['amount'].sum()
+        transactions_df = read_csv_cached('financial_transactions.csv')
+        if not transactions_df.empty:
+            transactions_df['date'] = pd.to_datetime(transactions_df['date'], errors='coerce')
+            
+            current_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # Filtragem eficiente
+            monthly_transactions = transactions_df[transactions_df['date'] >= current_month]
+            
+            if not monthly_transactions.empty:
+                # Usar groupby é mais eficiente que filtros múltiplos
+                grouped = monthly_transactions.groupby('type')['amount'].sum()
+                summary['receita_mensal'] = float(grouped.get('receita', 0))
+                summary['despesa_mensal'] = float(grouped.get('despesa', 0))
         
         # Cálculo do saldo atual
         summary['saldo_atual'] = summary['receita_mensal'] - summary['despesa_mensal']
         
         # Contagem de assinaturas ativas
-        subs_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
+        subs_df = read_csv_cached('subscriptions.csv')
         if not subs_df.empty:
-            subs_df['end_date'] = pd.to_datetime(subs_df['end_date'])
-            summary['assinaturas_ativas'] = len(subs_df[subs_df['end_date'] >= datetime.now()])
+            subs_df['end_date'] = pd.to_datetime(subs_df['end_date'], errors='coerce')
+            now = datetime.now()
+            summary['assinaturas_ativas'] = int((subs_df['end_date'] >= now).sum())
         
         # Contagem de pagamentos pendentes
-        payments_df = pd.read_csv(os.path.join(DATA_DIR, 'payments.csv'))
+        payments_df = read_csv_cached('payments.csv')
         if not payments_df.empty:
-            summary['pagamentos_pendentes'] = len(payments_df[payments_df['status'] == 'pendente'])
+            summary['pagamentos_pendentes'] = int((payments_df['status'] == 'pendente').sum())
             
-    except FileNotFoundError:
+    except Exception:
         pass
         
     return summary
@@ -323,91 +401,70 @@ def index():
 def admin_dashboard():
     financial_summary = get_financial_summary()
     
+    # Carregar todos os DataFrames uma única vez
+    transactions_df = read_csv_cached('financial_transactions.csv')
+    customers_df = read_csv_cached('customers.csv')
+    subs_df = read_csv_cached('subscriptions.csv')
+    vehicles_df = read_csv_cached('vehicles.csv')
+    payments_df = read_csv_cached('payments.csv')
+    plans_df = read_csv_cached('plans.csv')
+    
     # Últimas transações com nomes de clientes
-    try:
-        transactions_df = pd.read_csv(os.path.join(DATA_DIR, 'financial_transactions.csv'))
-        transactions_df['date'] = pd.to_datetime(transactions_df['date'])
+    transactions = []
+    if not transactions_df.empty:
+        transactions_df['date'] = pd.to_datetime(transactions_df['date'], errors='coerce')
         transactions_df = transactions_df.sort_values('date', ascending=False).head(5)
         
-        # Adiciona nome do cliente se houver relacionamento
-        customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
-        transactions_list = []
-        for _, trans in transactions_df.iterrows():
-            trans_dict = trans.to_dict()
-            # Tenta buscar nome do cliente via subscription
-            if trans_dict.get('related_id'):
-                try:
-                    subs_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
-                    sub = subs_df[subs_df['id'] == trans_dict['related_id']]
-                    if not sub.empty:
-                        customer_id = sub.iloc[0]['customer_id']
-                        customer = customers_df[customers_df['id'] == customer_id]
-                        if not customer.empty:
-                            trans_dict['customer_name'] = customer.iloc[0]['name']
-                except:
-                    pass
-            transactions_list.append(trans_dict)
-        transactions = transactions_list
-    except FileNotFoundError:
-        transactions = []
+        # Merge com clientes de uma vez (mais eficiente que loops)
+        if not customers_df.empty and not subs_df.empty:
+            for _, trans in transactions_df.iterrows():
+                trans_dict = trans.to_dict()
+                if pd.notna(trans_dict.get('related_id')):
+                    try:
+                        sub = subs_df.loc[subs_df['id'] == trans_dict['related_id']]
+                        if not sub.empty:
+                            customer_id = sub.iloc[0]['customer_id']
+                            customer = customers_df.loc[customers_df['id'] == customer_id]
+                            if not customer.empty:
+                                trans_dict['customer_name'] = customer.iloc[0]['name']
+                    except:
+                        pass
+                transactions.append(trans_dict)
+        else:
+            transactions = transactions_df.to_dict('records')
     
     # Próximos vencimentos
-    try:
-        subs_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
-        subs_df = subs_df.sort_values('end_date').head(5)
-        upcoming_renewals = subs_df.to_dict('records')
-    except FileNotFoundError:
-        upcoming_renewals = []
+    upcoming_renewals = []
+    if not subs_df.empty:
+        subs_df_sorted = subs_df.sort_values('end_date').head(5)
+        upcoming_renewals = subs_df_sorted.to_dict('records')
     
-    # Variáveis esperadas pelo template
-    # Clientes ativos (considera total de clientes cadastrados)
-    try:
-        customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
-        active_customers = len(customers_df)
-    except FileNotFoundError:
-        active_customers = 0
+    # Clientes ativos
+    active_customers = len(customers_df) if not customers_df.empty else 0
     
     # Total de veículos cadastrados
-    try:
-        vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        total_vehicles = len(vehicles_df)
-    except FileNotFoundError:
-        total_vehicles = 0
+    total_vehicles = len(vehicles_df) if not vehicles_df.empty else 0
     
-    # Receita mensal a partir do resumo financeiro
+    # Receita mensal
     monthly_revenue = float(financial_summary.get('receita_mensal', 0) or 0)
     
-    # Vencimentos hoje (assinaturas que vencem hoje)
-    try:
-        subs_dates_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
-        if not subs_dates_df.empty:
-            subs_dates_df['end_date'] = pd.to_datetime(subs_dates_df['end_date'], errors='coerce')
-            today_date = datetime.now().date()
-            due_today = int((subs_dates_df['end_date'].dt.date == today_date).sum())
-        else:
-            due_today = 0
-    except FileNotFoundError:
-        due_today = 0
+    # Vencimentos hoje
+    due_today = 0
+    if not subs_df.empty:
+        subs_df['end_date'] = pd.to_datetime(subs_df['end_date'], errors='coerce')
+        today_date = datetime.now().date()
+        due_today = int((subs_df['end_date'].dt.date == today_date).sum())
     
-    # Inadimplentes (pagamentos pendentes com data de pagamento anterior a hoje)
-    try:
-        payments_df = pd.read_csv(os.path.join(DATA_DIR, 'payments.csv'))
-        if not payments_df.empty:
-            payments_df['payment_date'] = pd.to_datetime(payments_df['payment_date'], errors='coerce')
-            overdue_mask = (payments_df['status'] == 'pendente') & (payments_df['payment_date'].dt.date < datetime.now().date())
-            overdue_count = int(overdue_mask.sum())
-        else:
-            overdue_count = 0
-    except FileNotFoundError:
-        overdue_count = 0
+    # Inadimplentes
+    overdue_count = 0
+    if not payments_df.empty:
+        payments_df['payment_date'] = pd.to_datetime(payments_df['payment_date'], errors='coerce')
+        overdue_mask = (payments_df['status'] == 'pendente') & (payments_df['payment_date'].dt.date < datetime.now().date())
+        overdue_count = int(overdue_mask.sum())
     
-    # Dados para o gráfico financeiro (últimos 6 meses)
+    # Dados para o gráfico financeiro (últimos 6 meses) - otimizado
     financial_chart_data = {'labels': [], 'receitas': [], 'despesas': []}
-    try:
-        transactions_df = pd.read_csv(os.path.join(DATA_DIR, 'financial_transactions.csv'))
-        transactions_df['date'] = pd.to_datetime(transactions_df['date'])
-        
-        # Últimos 6 meses
+    if not transactions_df.empty:
         today = datetime.now()
         for i in range(5, -1, -1):
             month_date = today - relativedelta(months=i)
@@ -423,51 +480,50 @@ def admin_dashboard():
                 (transactions_df['date'] <= month_end)
             ]
             
-            # Calcula receitas e despesas
-            receitas = month_transactions[month_transactions['type'] == 'receita']['amount'].sum()
-            despesas = month_transactions[month_transactions['type'] == 'despesa']['amount'].sum()
+            # Usa groupby para cálculo eficiente
+            if not month_transactions.empty:
+                grouped = month_transactions.groupby('type')['amount'].sum()
+                receitas = float(grouped.get('receita', 0))
+                despesas = float(grouped.get('despesa', 0))
+            else:
+                receitas = 0
+                despesas = 0
             
-            # Adiciona aos dados do gráfico
             financial_chart_data['labels'].append(month_start.strftime('%b'))
-            financial_chart_data['receitas'].append(float(receitas) if pd.notna(receitas) else 0)
-            financial_chart_data['despesas'].append(float(despesas) if pd.notna(despesas) else 0)
-    except FileNotFoundError:
-        # Dados padrão se não houver arquivo
+            financial_chart_data['receitas'].append(receitas)
+            financial_chart_data['despesas'].append(despesas)
+    else:
         financial_chart_data = {
             'labels': ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun'],
             'receitas': [0, 0, 0, 0, 0, 0],
             'despesas': [0, 0, 0, 0, 0, 0]
         }
     
-    # Dados para o gráfico de planos
+    # Dados para o gráfico de planos - otimizado
     plans_chart_data = {'labels': [], 'values': []}
-    try:
-        subscriptions_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
-        plans_df = pd.read_csv(os.path.join(DATA_DIR, 'plans.csv'))
+    if not subs_df.empty and not plans_df.empty:
+        subs_df['end_date'] = pd.to_datetime(subs_df['end_date'], errors='coerce')
+        now = datetime.now()
+        active_subs = subs_df[subs_df['end_date'] >= now]
         
-        if not subscriptions_df.empty and not plans_df.empty:
-            # Filtra assinaturas ativas
-            subscriptions_df['end_date'] = pd.to_datetime(subscriptions_df['end_date'])
-            active_subs = subscriptions_df[subscriptions_df['end_date'] >= datetime.now()]
-            
-            # Conta assinaturas por plano
+        if not active_subs.empty:
+            # Usa value_counts para contagem eficiente
             plan_counts = active_subs['plan_id'].value_counts()
             
+            # Merge com planos para obter nomes
             for plan_id, count in plan_counts.items():
-                plan = plans_df[plans_df['id'] == plan_id]
+                plan = plans_df.loc[plans_df['id'] == plan_id]
                 if not plan.empty:
                     plan_name = plan.iloc[0]['name']
                     plans_chart_data['labels'].append(plan_name)
                     plans_chart_data['values'].append(int(count))
-    except FileNotFoundError:
-        pass
     
-    # Se não houver dados, mostrar mensagem
     if not plans_chart_data['labels']:
-        plans_chart_data = {
-            'labels': ['Sem dados'],
-            'values': [1]
-        }
+        plans_chart_data = {'labels': ['Sem dados'], 'values': [1]}
+    
+    # Listas para os modais
+    customers_list = customers_df.to_dict('records') if not customers_df.empty else []
+    plans_list = plans_df[plans_df['is_active'] == True].to_dict('records') if not plans_df.empty else []
     
     return render_template('admin/dashboard.html', 
                          financial_summary=financial_summary,
@@ -480,7 +536,9 @@ def admin_dashboard():
                          financial_chart_data=financial_chart_data,
                          plans_chart_data=plans_chart_data,
                          total_vehicles=total_vehicles,
-                         overdue_count=overdue_count)
+                         overdue_count=overdue_count,
+                         customers=customers_list,
+                         plans=plans_list)
 
 @app.route('/dashboard')
 @login_required
@@ -531,14 +589,19 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         try:
-            users_df = pd.read_csv(os.path.join(DATA_DIR, 'users.csv'))
-            user_data = users_df[users_df['username'] == form.username.data]
+            users_df = read_csv_cached('users.csv')
+            if users_df.empty:
+                flash('Erro no sistema: arquivo de usuários não encontrado.', 'danger')
+                return render_template('auth/login.html', form=form)
+            
+            # Usar loc para busca mais eficiente
+            user_data = users_df.loc[users_df['username'] == form.username.data]
             
             if not user_data.empty:
                 user_record = user_data.iloc[0]
                 if check_password_hash(user_record['password_hash'], form.password.data):
                     user_obj = User(
-                        id=user_record['id'], 
+                        id=int(user_record['id']), 
                         username=user_record['username'], 
                         role=user_record['role'],
                         name=user_record.get('name', '')
@@ -551,8 +614,6 @@ def login():
                     flash('Senha incorreta. Tente novamente.', 'danger')
             else:
                 flash('Usuário não encontrado.', 'danger')
-        except FileNotFoundError:
-            flash('Erro no sistema: arquivo de usuários não encontrado.', 'danger')
         except Exception as e:
             flash(f'Erro ao fazer login: {str(e)}', 'danger')
 
@@ -562,47 +623,14 @@ def login():
 @login_required
 def logout():
     logout_user()
-    flash('Você foi desconectado com sucesso.', 'success')
     return redirect(url_for('login'))
 
 # --- Rotas de Perfil ---
-@app.route('/profile', methods=['GET', 'POST'])
-@login_required
-def profile():
-    form = ProfileForm()
-    
-    if request.method == 'GET':
-        # Preenche o formulário com os dados atuais do usuário
-        if current_user.role == 'admin':
-            user_data = get_user_by_id(current_user.id)
-        else:
-            user_data = get_customer_by_id(current_user.id)
-            
-        if user_data:
-            form.name.data = user_data.get('name', '')
-            form.email.data = user_data.get('email', '')
-            form.phone.data = user_data.get('phone', '')
-    
-    if form.validate_on_submit():
-        try:
-            if current_user.role == 'admin':
-                users_df = pd.read_csv(os.path.join(DATA_DIR, 'users.csv'))
-                users_df.loc[users_df['id'] == current_user.id, 'name'] = form.name.data
-                users_df.to_csv(os.path.join(DATA_DIR, 'users.csv'), index=False)
-            else:
-                customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
-                customers_df.loc[customers_df['id'] == current_user.id, 'name'] = form.name.data
-                customers_df.loc[customers_df['id'] == current_user.id, 'email'] = form.email.data
-                customers_df.loc[customers_df['id'] == current_user.id, 'phone'] = form.phone.data
-                customers_df.to_csv(os.path.join(DATA_DIR, 'customers.csv'), index=False)
-            
-            flash('Perfil atualizado com sucesso!', 'success')
-            return redirect(url_for('profile'))
-            
-        except Exception as e:
-            flash(f'Erro ao atualizar perfil: {str(e)}', 'danger')
-    
-    return render_template('profile.html', form=form)
+# Rota de perfil desabilitada (ProfileForm não definido)
+# @app.route('/profile', methods=['GET', 'POST'])
+# @login_required
+# def profile():
+#     pass
 
 # --- Rotas de Gerenciamento (Admin) ---
 
@@ -611,67 +639,92 @@ def profile():
 @admin_required
 def list_customers():
     try:
-        customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
+        customers_df = read_csv_cached('customers.csv')
+        if customers_df.empty:
+            return render_template('admin/customers/list.html', 
+                                 customers=[], page=1, total_pages=0, total=0)
         
-        # Buscar veículos para cada cliente
-        try:
-            vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        except FileNotFoundError:
-            vehicles_df = pd.DataFrame()
+        # Buscar veículos uma única vez
+        vehicles_df = read_csv_cached('vehicles.csv')
         
         # Aplicar filtros de busca
         search = request.args.get('search', '').strip()
         status = request.args.get('status', '')
         
         if search:
-            # Normalizar busca (remover pontos, hífens, espaços)
             search_normalized = ''.join(filter(str.isalnum, search.lower()))
             
-            # Buscar por nome
-            name_matches = customers_df[
-                customers_df['name'].str.lower().str.contains(search.lower(), na=False)
-            ]['id'].tolist()
+            # Usar operações vetorizadas (muito mais rápidas)
+            name_mask = customers_df['name'].str.lower().str.contains(search.lower(), na=False, regex=False)
+            cpf_mask = customers_df['cpf'].fillna('').astype(str).str.replace(r'\D', '', regex=True).str.lower().str.contains(search_normalized, na=False, regex=False)
             
-            # Buscar por CPF (normalizado)
-            cpf_matches = customers_df[
-                customers_df['cpf'].fillna('').astype(str).str.replace(r'\D', '', regex=True).str.lower().str.contains(search_normalized, na=False)
-            ]['id'].tolist()
-            
-            # Buscar por placa de veículo (normalizado)
+            # Busca por placa de veículo
             plate_matches = []
             if not vehicles_df.empty:
-                matching_vehicles = vehicles_df[
-                    vehicles_df['plate'].fillna('').astype(str).str.replace(r'\W', '', regex=True).str.lower().str.contains(search_normalized, na=False)
-                ]
-                plate_matches = matching_vehicles['customer_id'].unique().tolist()
+                plate_mask = vehicles_df['plate'].fillna('').astype(str).str.replace(r'\W', '', regex=True).str.lower().str.contains(search_normalized, na=False, regex=False)
+                plate_matches = vehicles_df.loc[plate_mask, 'customer_id'].unique().tolist()
             
-            # Combinar todos os IDs encontrados
-            matching_ids = list(set(name_matches + cpf_matches + plate_matches))
-            customers_df = customers_df[customers_df['id'].isin(matching_ids)]
+            # Combinar filtros
+            if plate_matches:
+                customers_df = customers_df[name_mask | cpf_mask | customers_df['id'].isin(plate_matches)]
+            else:
+                customers_df = customers_df[name_mask | cpf_mask]
         
         # Filtrar por status
         if status:
             customers_df = customers_df[customers_df['status'] == status]
         
-        customers = customers_df.to_dict('records')
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(customers_df)
+        total_pages = (total + per_page - 1) // per_page
         
-        # Adicionar veículos a cada cliente
-        for customer in customers:
-            if not vehicles_df.empty:
-                customer['vehicles'] = vehicles_df[vehicles_df['customer_id'] == customer['id']].to_dict('records')
-            else:
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        customers_paginated = customers_df.iloc[start_idx:end_idx]
+        customers = customers_paginated.to_dict('records')
+        
+        # Adicionar veículos usando merge (mais eficiente que loop)
+        if not vehicles_df.empty and customers:
+            customer_ids = [c['id'] for c in customers]
+            customer_vehicles = vehicles_df[vehicles_df['customer_id'].isin(customer_ids)]
+            
+            # Agrupar veículos por cliente
+            vehicles_by_customer = {}
+            for _, v in customer_vehicles.iterrows():
+                cid = v['customer_id']
+                if cid not in vehicles_by_customer:
+                    vehicles_by_customer[cid] = []
+                vehicles_by_customer[cid].append(v.to_dict())
+            
+            # Adicionar veículos aos clientes
+            for customer in customers:
+                customer['vehicles'] = vehicles_by_customer.get(customer['id'], [])
+        else:
+            for customer in customers:
                 customer['vehicles'] = []
         
-        return render_template('admin/customers/list.html', customers=customers)
-    except FileNotFoundError:
-        return render_template('admin/customers/list.html', customers=[])
+        return render_template('admin/customers/list.html', 
+                             customers=customers,
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
+    except Exception as e:
+        print(f"Erro ao listar clientes: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao carregar clientes: {str(e)}', 'danger')
+        return render_template('admin/customers/list.html', 
+                             customers=[], page=1, total_pages=0, total=0)
 
 @app.route('/admin/customers/add', methods=['GET', 'POST'])
 @admin_required
 def add_customer():
     if request.method == 'POST':
         try:
-            customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
+            customers_df = read_csv_cached('customers.csv')
             
             name = request.form.get('name', '').strip()
             email = request.form.get('email', '').strip()
@@ -708,7 +761,7 @@ def add_customer():
                 'neighborhood': request.form.get('neighborhood', '').strip(),
                 'city': request.form.get('city', '').strip(),
                 'state': request.form.get('state', '').strip(),
-                'address': '',  # Campo legado, manter vazio
+                'address': '',
                 'notes': request.form.get('notes', '').strip(),
                 'status': request.form.get('status', 'ativo'),
                 'created_at': now,
@@ -716,16 +769,20 @@ def add_customer():
             }])
             
             updated_df = pd.concat([customers_df, new_customer], ignore_index=True)
-            updated_df.to_csv(os.path.join(DATA_DIR, 'customers.csv'), index=False)
+            save_csv_and_invalidate(updated_df, 'customers.csv')
             
             flash('Cliente cadastrado com sucesso!', 'success')
+            
+            if request.form.get('from_dashboard') == '1':
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('list_customers'))
             
         except Exception as e:
             flash(f'Erro ao cadastrar cliente: {str(e)}', 'danger')
+            if request.form.get('from_dashboard') == '1':
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('list_customers'))
     
-    # GET - renderizar formulário antigo para compatibilidade
     form = CustomerForm()
     return render_template('admin/customers/form.html', form=form, title='Adicionar Cliente')
 
@@ -802,26 +859,23 @@ def edit_customer(customer_id):
 @admin_required
 def delete_customer(customer_id):
     try:
-        # Verifica se o cliente existe
-        customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
-        if customer_id not in customers_df['id'].values:
+        customers_df = read_csv_cached('customers.csv')
+        if customers_df.empty or customer_id not in customers_df['id'].values:
             flash('Cliente não encontrado.', 'danger')
             return redirect(url_for('list_customers'))
         
         # Verifica se o cliente possui veículos cadastrados
-        vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        if not vehicles_df[vehicles_df['customer_id'] == customer_id].empty:
+        vehicles_df = read_csv_cached('vehicles.csv')
+        if not vehicles_df.empty and not vehicles_df[vehicles_df['customer_id'] == customer_id].empty:
             flash('Não é possível excluir o cliente pois existem veículos vinculados a ele.', 'danger')
             return redirect(url_for('list_customers'))
         
         # Remove o cliente
         customers_df = customers_df[customers_df['id'] != customer_id]
-        customers_df.to_csv(os.path.join(DATA_DIR, 'customers.csv'), index=False)
+        save_csv_and_invalidate(customers_df, 'customers.csv')
         
         flash('Cliente excluído com sucesso!', 'success')
         
-    except FileNotFoundError:
-        flash('Erro: Arquivo de clientes não encontrado.', 'danger')
     except Exception as e:
         flash(f'Erro ao excluir cliente: {str(e)}', 'danger')
     
@@ -832,20 +886,74 @@ def delete_customer(customer_id):
 @admin_required
 def list_vehicles():
     try:
-        vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
+        vehicles_df = read_csv_cached('vehicles.csv')
+        customers_df = read_csv_cached('customers.csv')
         
-        # Adiciona o nome do cliente a cada veículo
-        vehicles_df = pd.merge(vehicles_df, customers_df[['id', 'name']], 
-                             left_on='customer_id', right_on='id', 
-                             how='left', suffixes=('', '_customer'))
-        vehicles_df = vehicles_df.rename(columns={'name': 'customer_name'})
+        if vehicles_df.empty:
+            return render_template('admin/vehicles/list.html', 
+                                 vehicles=[], customers=[], page=1, total_pages=0, total=0)
+        
+        # Merge eficiente com clientes
+        if not customers_df.empty:
+            vehicles_df = vehicles_df.merge(
+                customers_df[['id', 'name']], 
+                left_on='customer_id', 
+                right_on='id', 
+                how='left', 
+                suffixes=('', '_customer')
+            )
+            vehicles_df.rename(columns={'name': 'customer_name'}, inplace=True)
+        else:
+            vehicles_df['customer_name'] = 'N/A'
+        
+        # Aplicar filtros
+        search = request.args.get('search', '').strip()
+        status = request.args.get('status', '')
+        customer_filter = request.args.get('customer', '')
+        
+        if search:
+            search_normalized = ''.join(filter(str.isalnum, search.lower()))
+            # Usar operações vetorizadas
+            mask = (
+                vehicles_df['plate'].fillna('').astype(str).str.replace(r'\W', '', regex=True).str.lower().str.contains(search_normalized, na=False, regex=False) |
+                vehicles_df['model'].fillna('').astype(str).str.lower().str.contains(search.lower(), na=False, regex=False) |
+                vehicles_df['brand'].fillna('').astype(str).str.lower().str.contains(search.lower(), na=False, regex=False) |
+                vehicles_df['customer_name'].fillna('').astype(str).str.lower().str.contains(search.lower(), na=False, regex=False)
+            )
+            vehicles_df = vehicles_df[mask]
+        
+        if status:
+            vehicles_df = vehicles_df[vehicles_df['status'] == status]
+        
+        if customer_filter:
+            vehicles_df = vehicles_df[vehicles_df['customer_id'] == int(customer_filter)]
+        
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(vehicles_df)
+        total_pages = (total + per_page - 1) // per_page
+        
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        vehicles_paginated = vehicles_df.iloc[start_idx:end_idx]
+        
+        customers_list = customers_df.to_dict('records') if not customers_df.empty else []
         
         return render_template('admin/vehicles/list.html', 
-                             vehicles=vehicles_df.to_dict('records'),
-                             customers=customers_df.to_dict('records'))
-    except FileNotFoundError:
-        return render_template('admin/vehicles/list.html', vehicles=[], customers=[])
+                             vehicles=vehicles_paginated.to_dict('records'),
+                             customers=customers_list,
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
+    except Exception as e:
+        print(f"Erro ao listar veículos: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao carregar veículos: {str(e)}', 'danger')
+        return render_template('admin/vehicles/list.html', 
+                             vehicles=[], customers=[], page=1, total_pages=0, total=0)
 
 @app.route('/admin/vehicles/add', methods=['GET', 'POST'])
 @admin_required
@@ -894,10 +1002,16 @@ def add_vehicle():
             updated_df.to_csv(os.path.join(DATA_DIR, 'vehicles.csv'), index=False)
             
             flash('Veículo cadastrado com sucesso!', 'success')
+            
+            # Verifica se veio do dashboard
+            if request.form.get('from_dashboard') == '1':
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('list_vehicles'))
             
         except Exception as e:
             flash(f'Erro ao cadastrar veículo: {str(e)}', 'danger')
+            if request.form.get('from_dashboard') == '1':
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('list_vehicles'))
     
     # GET - renderizar formulário antigo para compatibilidade
@@ -1014,29 +1128,28 @@ def edit_vehicle(vehicle_id):
 @admin_required
 def delete_vehicle(vehicle_id):
     try:
-        # Verifica se o veículo existe
-        vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        if vehicle_id not in vehicles_df['id'].values:
+        vehicles_df = read_csv_cached('vehicles.csv')
+        if vehicles_df.empty or vehicle_id not in vehicles_df['id'].values:
             flash('Veículo não encontrado.', 'danger')
             return redirect(url_for('list_vehicles'))
         
         # Verifica se o veículo está vinculado a alguma assinatura ativa
-        subs_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
-        active_subs = subs_df[(subs_df['vehicle_id'] == vehicle_id) & 
-                             (pd.to_datetime(subs_df['end_date']) >= datetime.now())]
-        
-        if not active_subs.empty:
-            flash('Não é possível excluir o veículo pois ele está vinculado a uma assinatura ativa.', 'danger')
-            return redirect(url_for('list_vehicles'))
+        subs_df = read_csv_cached('subscriptions.csv')
+        if not subs_df.empty:
+            subs_df['end_date'] = pd.to_datetime(subs_df['end_date'], errors='coerce')
+            active_subs = subs_df[(subs_df['vehicle_id'] == vehicle_id) & 
+                                 (subs_df['end_date'] >= datetime.now())]
+            
+            if not active_subs.empty:
+                flash('Não é possível excluir o veículo pois ele está vinculado a uma assinatura ativa.', 'danger')
+                return redirect(url_for('list_vehicles'))
         
         # Remove o veículo
         vehicles_df = vehicles_df[vehicles_df['id'] != vehicle_id]
-        vehicles_df.to_csv(os.path.join(DATA_DIR, 'vehicles.csv'), index=False)
+        save_csv_and_invalidate(vehicles_df, 'vehicles.csv')
         
         flash('Veículo excluído com sucesso!', 'success')
         
-    except FileNotFoundError:
-        flash('Erro: Arquivo de veículos não encontrado.', 'danger')
     except Exception as e:
         flash(f'Erro ao excluir veículo: {str(e)}', 'danger')
     
@@ -1191,9 +1304,55 @@ def view_vehicle(vehicle_id):
 def list_plans():
     try:
         plans_df = pd.read_csv(os.path.join(DATA_DIR, 'plans.csv'))
-        return render_template('admin/plans/list.html', plans=plans_df.to_dict('records'))
+        
+        # Aplicar filtros
+        search = request.args.get('search', '').strip()
+        status = request.args.get('status', '')
+        
+        if search:
+            # Buscar por nome ou descrição
+            mask = (
+                plans_df['name'].fillna('').astype(str).str.lower().str.contains(search.lower(), na=False) |
+                plans_df['description'].fillna('').astype(str).str.lower().str.contains(search.lower(), na=False)
+            )
+            plans_df = plans_df[mask]
+        
+        if status:
+            is_active = status == 'ativo'
+            plans_df = plans_df[plans_df['is_active'] == is_active]
+        
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(plans_df)
+        total_pages = (total + per_page - 1) // per_page
+        
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        plans_paginated = plans_df.iloc[start_idx:end_idx]
+        
+        return render_template('admin/plans/list.html', 
+                             plans=plans_paginated.to_dict('records'),
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
     except FileNotFoundError:
-        return render_template('admin/plans/list.html', plans=[])
+        return render_template('admin/plans/list.html', 
+                             plans=[],
+                             page=1,
+                             total_pages=0,
+                             total=0)
+    except Exception as e:
+        print(f"Erro ao listar planos: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao carregar planos: {str(e)}', 'danger')
+        return render_template('admin/plans/list.html', 
+                             plans=[],
+                             page=1,
+                             total_pages=0,
+                             total=0)
 
 @app.route('/admin/plans/add', methods=['GET', 'POST'])
 @admin_required
@@ -1331,6 +1490,11 @@ def list_subscriptions():
         customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
         plans_df = pd.read_csv(os.path.join(DATA_DIR, 'plans.csv'))
         
+        # Aplicar filtros
+        search = request.args.get('search', '').strip()
+        status = request.args.get('status', '')
+        customer_filter = request.args.get('customer', '')
+        
         # Adiciona informações adicionais às assinaturas
         subscriptions = []
         total_monthly = 0
@@ -1364,23 +1528,70 @@ def list_subscriptions():
             
             subscriptions.append(sub_dict)
         
+        # Aplicar filtros
+        if search:
+            search_lower = search.lower()
+            subscriptions = [s for s in subscriptions if 
+                           search_lower in s['customer_name'].lower() or 
+                           search_lower in s['vehicle_plate'].lower() or 
+                           search_lower in s['plan_name'].lower()]
+        
+        if status:
+            if status == 'ativa':
+                subscriptions = [s for s in subscriptions if s['is_active']]
+            elif status == 'inativa':
+                subscriptions = [s for s in subscriptions if not s['is_active']]
+        
+        if customer_filter:
+            subscriptions = [s for s in subscriptions if s['customer_id'] == int(customer_filter)]
+        
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(subscriptions)
+        total_pages = (total + per_page - 1) // per_page
+        
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        subscriptions_paginated = subscriptions[start_idx:end_idx]
+        
         # Prepara listas para o modal
         customers = [{'id': int(row['id']), 'name': row['name']} for _, row in customers_df.iterrows()]
         plans = [{'id': int(row['id']), 'name': row['name'], 'price': float(row['price'])} 
                 for _, row in plans_df[plans_df['is_active'] == True].iterrows()]
         
         return render_template('admin/subscriptions/list.html', 
-                             subscriptions=subscriptions, 
+                             subscriptions=subscriptions_paginated, 
                              total_monthly=total_monthly,
                              customers=customers,
-                             plans=plans)
+                             plans=plans,
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
         
     except FileNotFoundError:
         return render_template('admin/subscriptions/list.html', 
                              subscriptions=[], 
                              total_monthly=0,
                              customers=[],
-                             plans=[])
+                             plans=[],
+                             page=1,
+                             total_pages=0,
+                             total=0)
+    except Exception as e:
+        print(f"Erro ao listar assinaturas: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao carregar assinaturas: {str(e)}', 'danger')
+        return render_template('admin/subscriptions/list.html', 
+                             subscriptions=[], 
+                             total_monthly=0,
+                             customers=[],
+                             plans=[],
+                             page=1,
+                             total_pages=0,
+                             total=0)
 
 @app.route('/admin/subscriptions/add', methods=['GET', 'POST'])
 @admin_required
@@ -1451,10 +1662,15 @@ def add_subscription():
                 updated_df.to_csv(os.path.join(DATA_DIR, 'subscriptions.csv'), index=False)
                 flash('Assinatura cadastrada com sucesso!', 'success')
             
+            # Verifica se veio do dashboard
+            if request.form.get('from_dashboard') == '1':
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('list_subscriptions'))
             
         except Exception as e:
             flash(f'Erro ao salvar assinatura: {str(e)}', 'danger')
+            if request.form.get('from_dashboard') == '1':
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('list_subscriptions'))
     
     # GET - Formulário tradicional (se ainda for usado)
@@ -1538,9 +1754,13 @@ def edit_subscription(subscription_id):
 @admin_required
 def delete_subscription(subscription_id):
     try:
-        subs_df = pd.read_csv(os.path.join(DATA_DIR, 'subscriptions.csv'))
+        subs_df = read_csv_cached('subscriptions.csv')
+        if subs_df.empty:
+            flash('Assinatura não encontrada.', 'danger')
+            return redirect(url_for('list_subscriptions'))
+        
         subs_df = subs_df[subs_df['id'] != subscription_id]
-        subs_df.to_csv(os.path.join(DATA_DIR, 'subscriptions.csv'), index=False)
+        save_csv_and_invalidate(subs_df, 'subscriptions.csv')
         
         flash('Assinatura excluída com sucesso!', 'success')
     except Exception as e:
@@ -1640,6 +1860,11 @@ def accounts_receivable():
         customers_df = pd.read_csv(os.path.join(DATA_DIR, 'customers.csv'))
         plans_df = pd.read_csv(os.path.join(DATA_DIR, 'plans.csv'))
         
+        # Filtros
+        search = request.args.get('search', '').strip()
+        status_filter = request.args.get('status', '')
+        customer_filter = request.args.get('customer', '')
+        
         # Carrega contas a receber existentes
         try:
             receivables_df = pd.read_csv(os.path.join(DATA_DIR, 'accounts_receivable.csv'))
@@ -1724,21 +1949,51 @@ def accounts_receivable():
         receivables_df.to_csv(os.path.join(DATA_DIR, 'accounts_receivable.csv'), index=False)
         
         # Filtros
-        status_filter = request.args.get('status', 'all')
-        if status_filter != 'all':
+        search = request.args.get('search', '').strip()
+        status_filter = request.args.get('status', '')
+        customer_filter = request.args.get('customer', '')
+        
+        # Aplicar filtros
+        if search:
+            search_lower = search.lower()
+            receivables_list = [r for r in receivables_list if 
+                              search_lower in r.get('customer_name', '').lower() or
+                              search_lower in r.get('description', '').lower()]
+        
+        if status_filter:
             receivables_list = [r for r in receivables_list if r['status'] == status_filter]
         
-        # Calcula totais
+        if customer_filter:
+            receivables_list = [r for r in receivables_list if r.get('customer_id') == int(customer_filter)]
+        
+        # Calcula totais (antes da paginação)
         total_pendente = sum(float(r['amount']) for r in receivables_list if r['status'] in ['pendente', 'vencido'])
         total_pago = sum(float(r['amount']) for r in receivables_list if r['status'] == 'pago')
         total_vencido = sum(float(r['amount']) for r in receivables_list if r['status'] == 'vencido')
         
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(receivables_list)
+        total_pages = (total + per_page - 1) // per_page
+        
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        receivables_paginated = receivables_list[start_idx:end_idx]
+        
+        # Prepara lista de clientes para filtro
+        customers_list = [{'id': int(row['id']), 'name': row['name']} for _, row in customers_df.iterrows()]
+        
         return render_template('admin/financial/accounts_receivable.html',
-                             receivables=receivables_list,
+                             receivables=receivables_paginated,
+                             customers=customers_list,
                              total_pendente=total_pendente,
                              total_pago=total_pago,
                              total_vencido=total_vencido,
-                             status_filter=status_filter)
+                             status_filter=status_filter,
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
     except Exception as e:
         flash(f'Erro ao carregar contas a receber: {str(e)}', 'danger')
         return render_template('admin/financial/accounts_receivable.html',
@@ -1803,37 +2058,66 @@ def accounts_payable():
         payables_df['due_date'] = pd.to_datetime(payables_df['due_date'])
         
         # Filtros
-        status_filter = request.args.get('status', 'all')
-        if status_filter != 'all':
-            payables_df = payables_df[payables_df['status'] == status_filter]
+        search = request.args.get('search', '').strip()
+        status_filter = request.args.get('status', '')
+        category_filter = request.args.get('category', '')
         
         # Formata dados para exibição
         payables_list = []
         for _, row in payables_df.iterrows():
             payable = row.to_dict()
+            payable['due_date_raw'] = row['due_date']
             payable['due_date'] = row['due_date'].strftime('%d/%m/%Y')
             payable['is_overdue'] = row['status'] == 'pendente' and row['due_date'] < pd.Timestamp.now()
             payables_list.append(payable)
         
-        # Calcula totais
-        total_pendente = payables_df[payables_df['status'] == 'pendente']['amount'].sum()
-        total_pago = payables_df[payables_df['status'] == 'pago']['amount'].sum()
-        total_vencido = payables_df[(payables_df['status'] == 'pendente') & 
-                                   (payables_df['due_date'] < pd.Timestamp.now())]['amount'].sum()
+        # Aplicar filtros
+        if search:
+            search_lower = search.lower()
+            payables_list = [p for p in payables_list if 
+                           search_lower in p.get('supplier', '').lower() or
+                           search_lower in p.get('description', '').lower()]
+        
+        if status_filter:
+            payables_list = [p for p in payables_list if p.get('status') == status_filter]
+        
+        if category_filter:
+            payables_list = [p for p in payables_list if p.get('category') == category_filter]
+        
+        # Calcula totais (antes da paginação)
+        total_geral = sum(p.get('amount', 0) for p in payables_list)
+        total_pago = sum(p.get('amount', 0) for p in payables_list if p.get('status') == 'pago')
+        total_vencido = sum(p.get('amount', 0) for p in payables_list if p.get('is_overdue', False))
+        
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(payables_list)
+        total_pages = (total + per_page - 1) // per_page
+        
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        payables_paginated = payables_list[start_idx:end_idx]
         
         return render_template('admin/financial/accounts_payable.html',
-                             payables=payables_list,
-                             total_pendente=total_pendente,
+                             payables=payables_paginated,
+                             total_geral=total_geral,
                              total_pago=total_pago,
                              total_vencido=total_vencido,
-                             status_filter=status_filter)
+                             status_filter=status_filter,
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
     except FileNotFoundError:
         return render_template('admin/financial/accounts_payable.html',
                              payables=[],
-                             total_pendente=0,
+                             total_geral=0,
                              total_pago=0,
                              total_vencido=0,
-                             status_filter='all')
+                             status_filter='',
+                             page=1,
+                             total_pages=0,
+                             total=0)
 
 @app.route('/admin/financial/accounts-payable/add', methods=['POST'])
 @admin_required
@@ -1914,6 +2198,64 @@ def pay_account(payable_id):
         
     except Exception as e:
         flash(f'Erro ao realizar pagamento: {str(e)}', 'danger')
+        return redirect(url_for('accounts_payable'))
+
+@app.route('/admin/financial/accounts-payable/<int:payable_id>/edit', methods=['POST'])
+@admin_required
+def edit_account_payable(payable_id):
+    try:
+        payables_df = pd.read_csv(os.path.join(DATA_DIR, 'accounts_payable.csv'))
+        
+        # Encontra a conta
+        idx = payables_df[payables_df['id'] == payable_id].index
+        if len(idx) == 0:
+            flash('Conta a pagar não encontrada.', 'danger')
+            return redirect(url_for('accounts_payable'))
+        
+        # Atualiza dados
+        payables_df.loc[idx, 'supplier'] = request.form.get('supplier')
+        payables_df.loc[idx, 'description'] = request.form.get('description')
+        payables_df.loc[idx, 'category'] = request.form.get('category')
+        payables_df.loc[idx, 'amount'] = float(request.form.get('amount'))
+        payables_df.loc[idx, 'due_date'] = request.form.get('due_date')
+        payables_df.loc[idx, 'notes'] = request.form.get('notes', '')
+        payables_df.loc[idx, 'updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        payables_df.to_csv(os.path.join(DATA_DIR, 'accounts_payable.csv'), index=False)
+        
+        flash('Conta a pagar atualizada com sucesso!', 'success')
+        return redirect(url_for('accounts_payable'))
+        
+    except Exception as e:
+        flash(f'Erro ao atualizar conta: {str(e)}', 'danger')
+        return redirect(url_for('accounts_payable'))
+
+@app.route('/admin/financial/accounts-payable/<int:payable_id>/delete', methods=['POST'])
+@admin_required
+def delete_account_payable(payable_id):
+    try:
+        payables_df = pd.read_csv(os.path.join(DATA_DIR, 'accounts_payable.csv'))
+        
+        # Verifica se a conta existe
+        idx = payables_df[payables_df['id'] == payable_id].index
+        if len(idx) == 0:
+            flash('Conta a pagar não encontrada.', 'danger')
+            return redirect(url_for('accounts_payable'))
+        
+        # Verifica se a conta já foi paga
+        if payables_df.loc[idx, 'status'].iloc[0] == 'pago':
+            flash('Não é possível excluir uma conta já paga.', 'danger')
+            return redirect(url_for('accounts_payable'))
+        
+        # Remove a conta
+        payables_df = payables_df[payables_df['id'] != payable_id]
+        payables_df.to_csv(os.path.join(DATA_DIR, 'accounts_payable.csv'), index=False)
+        
+        flash('Conta a pagar removida com sucesso!', 'success')
+        return redirect(url_for('accounts_payable'))
+        
+    except Exception as e:
+        flash(f'Erro ao remover conta: {str(e)}', 'danger')
         return redirect(url_for('accounts_payable'))
 
 # --- Fluxo de Caixa ---
@@ -2006,6 +2348,25 @@ def cash_flow():
         # Ordena por data
         movements.sort(key=lambda x: x['date'], reverse=True)
         
+        # Aplicar filtros
+        search = request.args.get('search', '').strip()
+        type_filter = request.args.get('type', '')
+        status_filter = request.args.get('status', '')
+        
+        movements_filtered = movements.copy()
+        
+        if search:
+            search_lower = search.lower()
+            movements_filtered = [m for m in movements_filtered if 
+                                search_lower in m.get('description', '').lower() or
+                                search_lower in m.get('category', '').lower()]
+        
+        if type_filter:
+            movements_filtered = [m for m in movements_filtered if m.get('type') == type_filter]
+        
+        if status_filter:
+            movements_filtered = [m for m in movements_filtered if m.get('status') == status_filter]
+        
         # Calcula saldo e totais
         saldo_atual = 0
         entradas_mes = 0
@@ -2039,9 +2400,18 @@ def cash_flow():
                 else:
                     saidas_vencidas += mov['amount']
         
+        # Paginação
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+        total = len(movements_filtered)
+        total_pages = (total + per_page - 1) // per_page
+        
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
         # Formata movimentações para exibição
         movements_display = []
-        for mov in movements[:50]:  # Últimas 50 movimentações
+        for mov in movements_filtered[start_idx:end_idx]:
             mov_display = mov.copy()
             mov_display['date'] = mov['date'].strftime('%d/%m/%Y')
             movements_display.append(mov_display)
@@ -2085,7 +2455,10 @@ def cash_flow():
                              saidas_previstas=saidas_previstas,
                              entradas_vencidas=entradas_vencidas,
                              saidas_vencidas=saidas_vencidas,
-                             chart_data=chart_data)
+                             chart_data=chart_data,
+                             page=page,
+                             total_pages=total_pages,
+                             total=total)
     except Exception as e:
         flash(f'Erro ao carregar fluxo de caixa: {str(e)}', 'danger')
         return render_template('admin/financial/cash_flow.html',
@@ -2097,7 +2470,10 @@ def cash_flow():
                              saidas_previstas=0,
                              entradas_vencidas=0,
                              saidas_vencidas=0,
-                             chart_data={'labels': [], 'balances': [], 'entradas': [], 'saidas': []})
+                             chart_data={'labels': [], 'balances': [], 'entradas': [], 'saidas': []},
+                             page=1,
+                             total_pages=0,
+                             total=0)
 
 # --- Relatórios ---
 @app.route('/admin/reports/dre')
@@ -2113,17 +2489,36 @@ def dre_report():
         transactions_df['date'] = pd.to_datetime(transactions_df['date'])
         year_transactions = transactions_df[transactions_df['date'].dt.year == year]
         
+        # Carrega contas a pagar PENDENTES para incluir nas despesas
+        payables_df = pd.read_csv(os.path.join(DATA_DIR, 'accounts_payable.csv'))
+        payables_df['due_date'] = pd.to_datetime(payables_df['due_date'])
+        year_payables = payables_df[(payables_df['due_date'].dt.year == year) & 
+                                     (payables_df['status'] == 'pendente')]
+        
         # Agrupa receitas por categoria
         receitas_grouped = year_transactions[year_transactions['type'] == 'receita'].groupby('category')['amount'].sum()
         receitas_detalhadas = [{'name': cat, 'amount': float(amt)} for cat, amt in receitas_grouped.items()]
         
-        # Agrupa despesas por categoria (apenas das transações)
+        # Agrupa despesas por categoria (transações + contas a pagar PENDENTES)
         despesas_grouped = year_transactions[year_transactions['type'] == 'despesa'].groupby('category')['amount'].sum()
         despesas_detalhadas = [{'name': cat, 'amount': float(amt)} for cat, amt in despesas_grouped.items()]
         
+        # Adiciona contas a pagar PENDENTES agrupadas por categoria
+        payables_grouped = year_payables.groupby('category')['amount'].sum()
+        for cat, amt in payables_grouped.items():
+            # Procura se a categoria já existe nas despesas
+            found = False
+            for desp in despesas_detalhadas:
+                if desp['name'] == cat:
+                    desp['amount'] += float(amt)
+                    found = True
+                    break
+            if not found:
+                despesas_detalhadas.append({'name': cat, 'amount': float(amt)})
+        
         # Calcula totais
         receita_bruta = float(receitas_grouped.sum()) if not receitas_grouped.empty else 0
-        despesas_totais = float(despesas_grouped.sum()) if not despesas_grouped.empty else 0
+        despesas_totais = sum(item['amount'] for item in despesas_detalhadas)
         resultado_liquido = receita_bruta - despesas_totais
         
         # Dados mensais para gráfico de evolução
@@ -2132,8 +2527,12 @@ def dre_report():
         monthly_resultado = []
         for month in range(1, 13):
             month_data = year_transactions[year_transactions['date'].dt.month == month]
+            month_payables = year_payables[year_payables['due_date'].dt.month == month]
+            
             rec = float(month_data[month_data['type'] == 'receita']['amount'].sum())
             desp = float(month_data[month_data['type'] == 'despesa']['amount'].sum())
+            desp += float(month_payables['amount'].sum())  # Apenas pendentes
+            
             monthly_receitas.append(rec)
             monthly_despesas.append(desp)
             monthly_resultado.append(rec - desp)
@@ -2172,18 +2571,28 @@ def dre_report():
 @login_required
 def get_vehicles_by_customer(customer_id):
     try:
-        vehicles_df = pd.read_csv(os.path.join(DATA_DIR, 'vehicles.csv'))
-        customer_vehicles = vehicles_df[vehicles_df['customer_id'] == customer_id]
+        vehicles_df = read_csv_cached('vehicles.csv')
+        if vehicles_df.empty:
+            return jsonify([])
+        
+        # Garante que customer_id está como inteiro no DataFrame
+        vehicles_df['customer_id'] = pd.to_numeric(vehicles_df['customer_id'], errors='coerce').fillna(0).astype(int)
+        
+        # Busca eficiente com loc
+        customer_vehicles = vehicles_df.loc[vehicles_df['customer_id'] == customer_id]
         
         vehicles = [{
-            'id': row['id'],
-            'plate': row['plate'],
-            'model': row['model'],
-            'color': row['color']
+            'id': int(row['id']),
+            'plate': str(row['plate']).upper(),
+            'model': str(row['model']),
+            'color': str(row['color']) if pd.notna(row['color']) else ''
         } for _, row in customer_vehicles.iterrows()]
         
         return jsonify(vehicles)
     except Exception as e:
+        print(f"ERRO ao buscar veículos: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

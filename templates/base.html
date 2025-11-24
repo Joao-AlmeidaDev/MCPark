@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Estacione+{% endblock %}</title>
+    <title>{% block title %}MC PARK MANAGER{% endblock %}</title>
     
     <!-- Bootstrap 5.3.2 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -29,7 +29,7 @@
             z-index: 100;
             padding: 0;
             box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-            background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+            background: linear-gradient(180deg, #000000 0%, #1a1a1a 100%);
             width: 260px;
             height: calc(100vh - 56px);
         }
@@ -59,8 +59,8 @@
             background-color: rgba(255, 255, 255, 0.1);
         }
         .sidebar .nav-link.active {
-            color: #fff;
-            background-color: rgba(52, 152, 219, 0.5);
+            color: #FFD700;
+            background-color: rgba(255, 215, 0, 0.15);
         }
         .sidebar .nav-link i {
             margin-right: 0.5rem;
@@ -95,9 +95,9 @@
 </head>
 <body>
     <!-- Navbar Superior -->
-    <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow" style="position: fixed; top: 0; left: 0; right: 0; z-index: 1030;">
-        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="{{ url_for('admin_dashboard') if current_user.is_authenticated and current_user.role == 'admin' else url_for('customer_dashboard') }}" style="width: 260px;">
-            <i class="bi bi-p-square"></i> Estacione+
+    <nav class="navbar navbar-dark sticky-top flex-md-nowrap p-0 shadow" style="position: fixed; top: 0; left: 0; right: 0; z-index: 1030; background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);">
+        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3 d-flex align-items-center" href="{{ url_for('admin_dashboard') if current_user.is_authenticated and current_user.role == 'admin' else url_for('customer_dashboard') }}" style="width: 260px;">
+            <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="MC PARK MANAGER" style="height: 40px; margin-right: 10px;">
         </a>
         <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu">
             <span class="navbar-toggler-icon"></span>

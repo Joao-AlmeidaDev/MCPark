@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Gerenciar Assinaturas - Estacione+{% endblock %}
+{% block title %}Gerenciar Assinaturas - MC PARK MANAGER{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -18,32 +18,44 @@
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-4">
-                    <label for="search" class="form-label">Cliente ou Placa</label>
+                    <label for="search" class="form-label">
+                        <i class="bi bi-search"></i> Buscar
+                    </label>
                     <input type="text" class="form-control" id="search" name="search" 
-                           value="{{ request.args.get('search', '') }}" placeholder="Nome do cliente ou placa">
+                           value="{{ request.args.get('search', '') }}" 
+                           placeholder="Cliente, placa ou plano"
+                           autocomplete="off">
                 </div>
                 <div class="col-md-3">
-                    <label for="status" class="form-label">Status</label>
-                    <select class="form-select" id="status" name="status">
+                    <label for="customer" class="form-label">
+                        <i class="bi bi-person"></i> Cliente
+                    </label>
+                    <select class="form-select" id="customer" name="customer">
                         <option value="">Todos</option>
-                        <option value="ativa" {{ 'selected' if request.args.get('status') == 'ativa' }}>Ativas</option>
-                        <option value="vencida" {{ 'selected' if request.args.get('status') == 'vencida' }}>Vencidas</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="plan" class="form-label">Plano</label>
-                    <select class="form-select" id="plan" name="plan">
-                        <option value="">Todos</option>
-                        {% for plan in plans %}
-                        <option value="{{ plan.id }}" {{ 'selected' if request.args.get('plan') == plan.id|string }}>
-                            {{ plan.name }}
+                        {% for customer in customers %}
+                        <option value="{{ customer.id }}" {{ 'selected' if request.args.get('customer') == customer.id|string }}>
+                            {{ customer.name }}
                         </option>
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-3">
+                    <label for="status" class="form-label">
+                        <i class="bi bi-funnel"></i> Status
+                    </label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">Todos</option>
+                        <option value="ativa" {{ 'selected' if request.args.get('status') == 'ativa' }}>Ativas</option>
+                        <option value="inativa" {{ 'selected' if request.args.get('status') == 'inativa' }}>Inativas</option>
+                    </select>
+                </div>
                 <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary me-2">Filtrar</button>
-                    <a href="{{ url_for('list_subscriptions') }}" class="btn btn-outline-secondary">Limpar</a>
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    <a href="{{ url_for('list_subscriptions') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> Limpar
+                    </a>
                 </div>
             </form>
         </div>
@@ -120,14 +132,67 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Paginação -->
+            {% if total_pages > 1 %}
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted">
+                    Mostrando {{ ((page - 1) * 15) + 1 }} - {{ [page * 15, total]|min }} de {{ total }} assinaturas
+                </div>
+                <nav aria-label="Navegação de páginas">
+                    <ul class="pagination mb-0">
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('list_subscriptions', page=1, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&laquo;&laquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('list_subscriptions', page=page-1, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&laquo;</a>
+                        </li>
+                        
+                        {% set start_page = [1, page - 2]|max %}
+                        {% set end_page = [total_pages, page + 2]|min %}
+                        
+                        {% if start_page > 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        {% for p in range(start_page, end_page + 1) %}
+                            <li class="page-item {{ 'active' if p == page else '' }}">
+                                <a class="page-link" href="{{ url_for('list_subscriptions', page=p, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">{{ p }}</a>
+                            </li>
+                        {% endfor %}
+                        
+                        {% if end_page < total_pages %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('list_subscriptions', page=page+1, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&raquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('list_subscriptions', page=total_pages, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&raquo;&raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+            
             {% else %}
             <div class="text-center py-5">
                 <i class="bi bi-clipboard-x display-1 text-muted"></i>
                 <h4 class="mt-3">Nenhuma assinatura encontrada</h4>
-                <p class="text-muted">Comece adicionando a primeira assinatura do sistema.</p>
+                <p class="text-muted">
+                    {% if request.args.get('search') or request.args.get('status') or request.args.get('customer') %}
+                        Nenhuma assinatura corresponde aos filtros aplicados.
+                        <a href="{{ url_for('list_subscriptions') }}" class="text-primary">Limpar filtros</a>
+                    {% else %}
+                        Comece adicionando a primeira assinatura do sistema.
+                    {% endif %}
+                </p>
+                {% if not (request.args.get('search') or request.args.get('status') or request.args.get('customer')) %}
                 <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#newSubscriptionModal">
                     <i class="bi bi-plus-lg"></i> Adicionar Assinatura
                 </button>
+                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -405,6 +470,20 @@
 $(document).ready(function() {
     console.log('Inicializando modais de assinaturas...');
     
+    // ========== FILTROS ==========
+    // Filtro em tempo real - submete o formulário ao mudar status ou cliente
+    $('#status, #customer').on('change', function() {
+        $(this).closest('form').submit();
+    });
+    
+    // Filtro com Enter no campo de busca
+    $('#search').on('keypress', function(e) {
+        if (e.which === 13) { // Enter
+            e.preventDefault();
+            $(this).closest('form').submit();
+        }
+    });
+    
     // ========== MODAL DE ADICIONAR ==========
     $('#newSubscriptionModal').on('shown.bs.modal', function() {
         initSelect2('#modal_customer_select', '#newSubscriptionModal');
@@ -459,11 +538,21 @@ function initSelect2(selector, modalId) {
 function loadVehiclesForModal(customerId, vehicleSelectId, modalId) {
     const vehicleSelect = $(vehicleSelectId);
     
+    console.log('=== loadVehiclesForModal ===');
+    console.log('customerId:', customerId);
+    console.log('vehicleSelectId:', vehicleSelectId);
+    console.log('modalId:', modalId);
+    
     if(customerId) {
+        console.log('Fazendo requisição AJAX para:', `/api/vehicles/by_customer/${customerId}`);
         $.ajax({
             url: `/api/vehicles/by_customer/${customerId}`,
             method: 'GET',
-            success: function(vehicles) {
+            success: function(response) {
+                const vehicles = Array.isArray(response) ? response : (response.vehicles || []);
+                console.log('Resposta da API recebida:', vehicles);
+                console.log('Número de veículos:', vehicles ? vehicles.length : 0);
+                
                 if (vehicleSelect.hasClass('select2-hidden-accessible')) {
                     vehicleSelect.select2('destroy');
                 }
@@ -472,17 +561,29 @@ function loadVehiclesForModal(customerId, vehicleSelectId, modalId) {
                 if (vehicles && vehicles.length > 0) {
                     vehicleSelect.append(new Option('Selecione um veículo', '', false, false));
                     vehicles.forEach(function(vehicle) {
+                        console.log('Adicionando veículo:', vehicle);
                         vehicleSelect.append(`<option value="${vehicle.id}">${vehicle.plate} - ${vehicle.model}</option>`);
                     });
                     vehicleSelect.prop('disabled', false);
                     initSelect2(vehicleSelectId, modalId);
+                    console.log('Veículos carregados com sucesso!');
                 } else {
+                    console.warn('Nenhum veículo encontrado para o cliente:', customerId);
                     vehicleSelect.append(new Option('Nenhum veículo encontrado', '', false, false));
                     vehicleSelect.prop('disabled', true);
                 }
+            },
+            error: function(xhr, status, error) {
+                console.error('Erro na requisição AJAX:');
+                console.error('Status:', status);
+                console.error('Erro:', error);
+                console.error('Resposta:', xhr.responseText);
+                vehicleSelect.empty().append(new Option('Erro ao carregar veículos', '', false, false));
+                vehicleSelect.prop('disabled', true);
             }
         });
     } else {
+        console.log('Cliente não selecionado');
         if (vehicleSelect.hasClass('select2-hidden-accessible')) {
             vehicleSelect.select2('destroy');
         }
@@ -552,7 +653,7 @@ $(document).on('click', '.delete-btn', function() {
     $('#deleteCustomerName').text(customerName);
     
     // Atualizar action do formulário de exclusão
-    $('#deleteForm').attr('action', `/subscriptions/delete/${subscriptionId}`);
+    $('#deleteForm').attr('action', `/admin/subscriptions/delete/${subscriptionId}`);
 });
 </script>
 {% endblock %}

@@ -1,4 +1,4 @@
-# 📋 Documentação Completa - Sistema Estacione+
+# 📋 Documentação Completa - Sistema MC PARK MANAGER
 
 ## 📌 Índice
 1. [Visão Geral](#visão-geral)
@@ -19,7 +19,7 @@
 
 ## 🎯 Visão Geral
 
-**Estacione+** é um sistema completo de gerenciamento de estacionamento desenvolvido em Python com Flask. O sistema permite gerenciar clientes, veículos, planos de assinatura, pagamentos e controle financeiro de forma integrada e eficiente.
+**MC PARK MANAGER** é um sistema completo de gerenciamento de estacionamento desenvolvido em Python com Flask. O sistema permite gerenciar clientes, veículos, planos de assinatura, pagamentos e controle financeiro de forma integrada e eficiente.
 
 ### Características Principais
 - ✅ Gestão completa de clientes e veículos
@@ -1109,4 +1109,4 @@ Este projeto é publico porem foi desenvolvido para cliente especifico.
 
 ---
 
-**Estacione+** - Sistema de Gerenciamento de Estacionamento  
+**MC PARK MANAGER** - Sistema de Gerenciamento de Estacionamento  

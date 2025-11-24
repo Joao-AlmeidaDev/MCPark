@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Gerenciar Clientes - Estacione+{% endblock %}
+{% block title %}Gerenciar Clientes - MC PARK MANAGER{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -18,14 +18,18 @@
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-5">
-                    <label for="search" class="form-label">Buscar</label>
+                    <label for="search" class="form-label">
+                        <i class="bi bi-search"></i> Buscar
+                    </label>
                     <input type="text" class="form-control" id="search" name="search" 
                            value="{{ request.args.get('search', '') }}" 
                            placeholder="Nome, CPF ou Placa do veículo"
                            autocomplete="off">
                 </div>
                 <div class="col-md-3">
-                    <label for="status" class="form-label">Status</label>
+                    <label for="status" class="form-label">
+                        <i class="bi bi-funnel"></i> Status
+                    </label>
                     <select class="form-select" id="status" name="status">
                         <option value="">Todos</option>
                         <option value="ativo" {{ 'selected' if request.args.get('status') == 'ativo' else '' }}>Ativos</option>
@@ -34,8 +38,12 @@
                     </select>
                 </div>
                 <div class="col-md-4 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary me-2">Filtrar</button>
-                    <a href="{{ url_for('list_customers') }}" class="btn btn-outline-secondary">Limpar</a>
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    <a href="{{ url_for('list_customers') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> Limpar
+                    </a>
                 </div>
             </form>
         </div>
@@ -111,6 +119,56 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Paginação -->
+            {% if total_pages > 1 %}
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted">
+                    Mostrando {{ ((page - 1) * 15) + 1 }} - {{ [page * 15, total]|min }} de {{ total }} clientes
+                </div>
+                <nav aria-label="Navegação de páginas">
+                    <ul class="pagination mb-0">
+                        <!-- Primeira página -->
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('list_customers', page=1, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&laquo;&laquo;</a>
+                        </li>
+                        
+                        <!-- Página anterior -->
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('list_customers', page=page-1, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&laquo;</a>
+                        </li>
+                        
+                        <!-- Páginas numeradas -->
+                        {% set start_page = [1, page - 2]|max %}
+                        {% set end_page = [total_pages, page + 2]|min %}
+                        
+                        {% if start_page > 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        {% for p in range(start_page, end_page + 1) %}
+                            <li class="page-item {{ 'active' if p == page else '' }}">
+                                <a class="page-link" href="{{ url_for('list_customers', page=p, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">{{ p }}</a>
+                            </li>
+                        {% endfor %}
+                        
+                        {% if end_page < total_pages %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        <!-- Próxima página -->
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('list_customers', page=page+1, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&raquo;</a>
+                        </li>
+                        
+                        <!-- Última página -->
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('list_customers', page=total_pages, search=request.args.get('search', ''), status=request.args.get('status', '')) }}">&raquo;&raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
             
             {% else %}
             <div class="text-center py-5">
@@ -531,6 +589,19 @@
 
 {% block extra_js %}
 <script>
+// Filtro em tempo real - submete o formulário ao mudar status
+$('#status').on('change', function() {
+    $(this).closest('form').submit();
+});
+
+// Filtro com Enter ou ao clicar no botão
+$('#search').on('keypress', function(e) {
+    if (e.which === 13) { // Enter
+        e.preventDefault();
+        $(this).closest('form').submit();
+    }
+});
+
 // Formata CPF enquanto digita
 $(document).on('input', 'input[name="cpf"]', function() {
     let value = $(this).val().replace(/\D/g, '');
