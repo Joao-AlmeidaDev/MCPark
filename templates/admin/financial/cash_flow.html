@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Fluxo de Caixa - Estacione+{% endblock %}
+{% block title %}Fluxo de Caixa - MC PARK MANAGER{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -108,6 +108,55 @@
         </div>
     </div>
     
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-funnel"></i> Filtros</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">
+                        <i class="bi bi-search"></i> Buscar
+                    </label>
+                    <input type="text" class="form-control" id="search" name="search" 
+                           value="{{ request.args.get('search', '') }}" 
+                           placeholder="Descrição ou categoria"
+                           autocomplete="off">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">
+                        <i class="bi bi-arrow-left-right"></i> Tipo
+                    </label>
+                    <select class="form-select" id="type" name="type">
+                        <option value="">Todos</option>
+                        <option value="entrada" {{ 'selected' if request.args.get('type') == 'entrada' }}>Entradas</option>
+                        <option value="saida" {{ 'selected' if request.args.get('type') == 'saida' }}>Saídas</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">
+                        <i class="bi bi-check-circle"></i> Status
+                    </label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">Todos</option>
+                        <option value="realizado" {{ 'selected' if request.args.get('status') == 'realizado' }}>Realizado</option>
+                        <option value="previsto" {{ 'selected' if request.args.get('status') == 'previsto' }}>Previsto</option>
+                        <option value="vencido" {{ 'selected' if request.args.get('status') == 'vencido' }}>Vencido</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    <a href="{{ url_for('cash_flow') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> Limpar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <!-- Gráfico -->
     <div class="card mb-4">
         <div class="card-header">
@@ -178,9 +227,53 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Paginação -->
+            {% if total_pages > 1 %}
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted">
+                    Mostrando {{ ((page - 1) * 15) + 1 }} - {{ [page * 15, total]|min }} de {{ total }} movimentações
+                </div>
+                <nav aria-label="Navegação de páginas">
+                    <ul class="pagination mb-0">
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('cash_flow', page=1, search=request.args.get('search', ''), type=request.args.get('type', ''), status=request.args.get('status', '')) }}">&laquo;&laquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('cash_flow', page=page-1, search=request.args.get('search', ''), type=request.args.get('type', ''), status=request.args.get('status', '')) }}">&laquo;</a>
+                        </li>
+                        
+                        {% set start_page = [1, page - 2]|max %}
+                        {% set end_page = [total_pages, page + 2]|min %}
+                        
+                        {% if start_page > 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        {% for p in range(start_page, end_page + 1) %}
+                            <li class="page-item {{ 'active' if p == page else '' }}">
+                                <a class="page-link" href="{{ url_for('cash_flow', page=p, search=request.args.get('search', ''), type=request.args.get('type', ''), status=request.args.get('status', '')) }}">{{ p }}</a>
+                            </li>
+                        {% endfor %}
+                        
+                        {% if end_page < total_pages %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('cash_flow', page=page+1, search=request.args.get('search', ''), type=request.args.get('type', ''), status=request.args.get('status', '')) }}">&raquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('cash_flow', page=total_pages, search=request.args.get('search', ''), type=request.args.get('type', ''), status=request.args.get('status', '')) }}">&raquo;&raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
+{% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -221,6 +314,17 @@ if (ctx) {
         }
     });
 }
+
+// Filtros em tempo real
+$('#type, #status').on('change', function() {
+    $(this).closest('form').submit();
+});
+
+$('#search').on('keypress', function(e) {
+    if (e.which === 13) {
+        e.preventDefault();
+        $(this).closest('form').submit();
+    }
+});
 </script>
-{% endblock %}
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Contas a Receber - Estacione+{% endblock %}
+{% block title %}Contas a Receber - MC PARK MANAGER{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -67,23 +67,40 @@
         </div>
         <div class="card-body">
             <form method="GET" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">
+                        <i class="bi bi-search"></i> Buscar
+                    </label>
+                    <input type="text" class="form-control" id="search" name="search" 
+                           value="{{ request.args.get('search', '') }}" 
+                           placeholder="Cliente ou descrição"
+                           autocomplete="off">
+                </div>
                 <div class="col-md-3">
-                    <label class="form-label">Status</label>
-                    <select class="form-select" name="status">
-                        <option value="all">Todos</option>
-                        <option value="pendente" {{ 'selected' if status_filter == 'pendente' }}>Pendente</option>
-                        <option value="pago" {{ 'selected' if status_filter == 'pago' }}>Pago</option>
+                    <label class="form-label">
+                        <i class="bi bi-person"></i> Cliente
+                    </label>
+                    <select class="form-select" id="customer" name="customer">
+                        <option value="">Todos</option>
+                        {% for customer in customers %}
+                        <option value="{{ customer.id }}" {{ 'selected' if request.args.get('customer') == customer.id|string }}>
+                            {{ customer.name }}
+                        </option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Data Início</label>
-                    <input type="date" class="form-select" name="start_date">
+                    <label class="form-label">
+                        <i class="bi bi-funnel"></i> Status
+                    </label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">Todos</option>
+                        <option value="pendente" {{ 'selected' if request.args.get('status') == 'pendente' }}>Pendente</option>
+                        <option value="vencido" {{ 'selected' if request.args.get('status') == 'vencido' }}>Vencido</option>
+                        <option value="pago" {{ 'selected' if request.args.get('status') == 'pago' }}>Pago</option>
+                    </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Data Fim</label>
-                    <input type="date" class="form-control" name="end_date">
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-2 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary me-2">
                         <i class="bi bi-search"></i> Filtrar
                     </button>
@@ -162,6 +179,49 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Paginação -->
+            {% if total_pages > 1 %}
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted">
+                    Mostrando {{ ((page - 1) * 15) + 1 }} - {{ [page * 15, total]|min }} de {{ total }} contas
+                </div>
+                <nav aria-label="Navegação de páginas">
+                    <ul class="pagination mb-0">
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_receivable', page=1, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&laquo;&laquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_receivable', page=page-1, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&laquo;</a>
+                        </li>
+                        
+                        {% set start_page = [1, page - 2]|max %}
+                        {% set end_page = [total_pages, page + 2]|min %}
+                        
+                        {% if start_page > 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        {% for p in range(start_page, end_page + 1) %}
+                            <li class="page-item {{ 'active' if p == page else '' }}">
+                                <a class="page-link" href="{{ url_for('accounts_receivable', page=p, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">{{ p }}</a>
+                            </li>
+                        {% endfor %}
+                        
+                        {% if end_page < total_pages %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_receivable', page=page+1, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&raquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_receivable', page=total_pages, search=request.args.get('search', ''), status=request.args.get('status', ''), customer=request.args.get('customer', '')) }}">&raquo;&raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

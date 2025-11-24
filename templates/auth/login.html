@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Estacione+</title>
+    <title>Login - MC PARK MANAGER</title>
     
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
@@ -31,7 +31,7 @@
     /* Lado esquerdo - Logo e marca */
     .login-left {
         flex: 1;
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -67,19 +67,19 @@
     .logo-icon {
         width: 140px;
         height: 140px;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 215, 0, 0.15);
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto 2rem;
-        border: 3px solid rgba(255, 255, 255, 0.2);
+        border: 3px solid rgba(255, 215, 0, 0.3);
         backdrop-filter: blur(10px);
     }
     
     .logo-icon i {
         font-size: 5rem;
-        color: white;
+        color: #FFD700;
     }
     
     .company-name {
@@ -113,7 +113,7 @@
     .feature-item i {
         font-size: 1.3rem;
         margin-right: 1rem;
-        color: #3498db;
+        color: #FFD700;
     }
     
     /* Lado direito - Formulário de login */
@@ -134,7 +134,7 @@
     .login-title {
         font-size: 2rem;
         font-weight: 700;
-        color: #2c3e50;
+        color: #000000;
         margin-bottom: 0.5rem;
     }
     
@@ -152,13 +152,13 @@
         display: block;
         font-size: 0.95rem;
         font-weight: 600;
-        color: #2c3e50;
+        color: #000000;
         margin-bottom: 0.5rem;
     }
     
     .form-label i {
         margin-right: 0.5rem;
-        color: #3498db;
+        color: #FFD700;
     }
     
     .form-control {
@@ -173,9 +173,9 @@
     
     .form-control:focus {
         outline: none;
-        border-color: #3498db;
+        border-color: #FFD700;
         background: white;
-        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2);
     }
     
     .form-control.is-invalid {
@@ -194,8 +194,8 @@
         padding: 1rem;
         font-size: 1.05rem;
         font-weight: 600;
-        color: white;
-        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+        color: #000000;
+        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
         border: none;
         border-radius: 8px;
         cursor: pointer;
@@ -205,8 +205,8 @@
     
     .btn-login:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3);
-        background: linear-gradient(135deg, #2980b9 0%, #3498db 100%);
+        box-shadow: 0 8px 20px rgba(255, 215, 0, 0.4);
+        background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
     }
     
     .btn-login:active {
@@ -297,7 +297,7 @@
             <div class="logo-icon">
                 <i class="bi bi-p-square-fill"></i>
             </div>
-            <h1 class="company-name">Estacione+</h1>
+            <h1 class="company-name">MC PARK MANAGER</h1>
             <p class="company-tagline">Gestão de Mensalistas</p>
             
             <div class="features-list">
@@ -326,6 +326,18 @@
         <div class="login-form-container">
             <h2 class="login-title">Bem-vindo!</h2>
             <p class="login-subtitle">Entre com suas credenciais para acessar o sistema</p>
+            
+            <!-- Mensagens de erro/sucesso -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" role="alert" style="margin-bottom: 1.5rem; padding: 0.75rem 1rem; border-radius: 8px; border-left: 4px solid {{ '#dc3545' if category == 'danger' or category == 'error' else '#27ae60' }}; background: {{ '#f8d7da' if category == 'danger' or category == 'error' else '#f0fdf4' }}; color: {{ '#721c24' if category == 'danger' or category == 'error' else '#27ae60' }}; font-size: 0.95rem;">
+                            <i class="bi bi-{{ 'x-circle-fill' if category == 'danger' or category == 'error' else 'check-circle-fill' }}" style="margin-right: 0.5rem;"></i>
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
             
             <form method="POST" action="{{ url_for('login') }}">
                 {{ form.hidden_tag() }}
@@ -360,7 +372,7 @@
                         <span>Acesso seguro e criptografado</span>
                     </div>
                     <div class="copyright">
-                        &copy; 2025 Estacione+ - Todos os direitos reservados
+                        &copy; 2025 MC PARK MANAGER - Todos os direitos reservados
                     </div>
                 </div>
             </form>

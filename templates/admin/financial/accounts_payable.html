@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Contas a Pagar - Estacione+{% endblock %}
+{% block title %}Contas a Pagar - MC PARK MANAGER{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -20,7 +20,7 @@
                     <i class="bi bi-exclamation-circle"></i>
                 </div>
                 <div class="stat-content">
-                    <div class="stat-value" style="color: #2d3748;">{{ total_pendente|default(0)|format_currency }}</div>
+                    <div class="stat-value" style="color: #2d3748;">{{ total_geral|default(0)|format_currency }}</div>
                     <div class="stat-label" style="color: #4a5568;">Total a Pagar</div>
                 </div>
             </div>
@@ -68,16 +68,19 @@
         <div class="card-body">
             <form method="GET" class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label">Status</label>
-                    <select class="form-select" name="status">
-                        <option value="all">Todos</option>
-                        <option value="pendente" {{ 'selected' if status_filter == 'pendente' }}>Pendente</option>
-                        <option value="pago" {{ 'selected' if status_filter == 'pago' }}>Pago</option>
-                    </select>
+                    <label class="form-label">
+                        <i class="bi bi-search"></i> Buscar
+                    </label>
+                    <input type="text" class="form-control" id="search" name="search" 
+                           value="{{ request.args.get('search', '') }}" 
+                           placeholder="Fornecedor ou descrição"
+                           autocomplete="off">
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">Categoria</label>
-                    <select class="form-select" name="category">
+                <div class="col-md-3">
+                    <label class="form-label">
+                        <i class="bi bi-tag"></i> Categoria
+                    </label>
+                    <select class="form-select" id="category" name="category">
                         <option value="">Todas</option>
                         <option value="Aluguel">Aluguel</option>
                         <option value="Energia">Energia</option>
@@ -87,7 +90,17 @@
                         <option value="Manutenção">Manutenção</option>
                     </select>
                 </div>
-                <div class="col-md-4 d-flex align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">
+                        <i class="bi bi-funnel"></i> Status
+                    </label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">Todos</option>
+                        <option value="pendente" {{ 'selected' if request.args.get('status') == 'pendente' }}>Pendente</option>
+                        <option value="pago" {{ 'selected' if request.args.get('status') == 'pago' }}>Pago</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary me-2">
                         <i class="bi bi-search"></i> Filtrar
                     </button>
@@ -145,15 +158,23 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if item.status != 'pago' %}
-                                <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#payModal{{ item.id }}">
-                                    <i class="bi bi-cash"></i> Pagar
-                                </button>
-                                {% else %}
-                                <span class="text-muted">
-                                    <i class="bi bi-check-circle"></i> Pago
-                                </span>
-                                {% endif %}
+                                <div class="btn-group" role="group">
+                                    {% if item.status != 'pago' %}
+                                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#payModal{{ item.id }}" title="Pagar">
+                                        <i class="bi bi-cash"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ item.id }}" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ item.id }}" title="Remover">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted">
+                                        <i class="bi bi-check-circle"></i> Pago em {{ item.payment_date }}
+                                    </span>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -169,6 +190,49 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Paginação -->
+            {% if total_pages > 1 %}
+            <div class="d-flex justify-content-between align-items-center mt-4">
+                <div class="text-muted">
+                    Mostrando {{ ((page - 1) * 15) + 1 }} - {{ [page * 15, total]|min }} de {{ total }} contas
+                </div>
+                <nav aria-label="Navegação de páginas">
+                    <ul class="pagination mb-0">
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_payable', page=1, search=request.args.get('search', ''), status=request.args.get('status', ''), category=request.args.get('category', '')) }}">&laquo;&laquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == 1 else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_payable', page=page-1, search=request.args.get('search', ''), status=request.args.get('status', ''), category=request.args.get('category', '')) }}">&laquo;</a>
+                        </li>
+                        
+                        {% set start_page = [1, page - 2]|max %}
+                        {% set end_page = [total_pages, page + 2]|min %}
+                        
+                        {% if start_page > 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        {% for p in range(start_page, end_page + 1) %}
+                            <li class="page-item {{ 'active' if p == page else '' }}">
+                                <a class="page-link" href="{{ url_for('accounts_payable', page=p, search=request.args.get('search', ''), status=request.args.get('status', ''), category=request.args.get('category', '')) }}">{{ p }}</a>
+                            </li>
+                        {% endfor %}
+                        
+                        {% if end_page < total_pages %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_payable', page=page+1, search=request.args.get('search', ''), status=request.args.get('status', ''), category=request.args.get('category', '')) }}">&raquo;</a>
+                        </li>
+                        <li class="page-item {{ 'disabled' if page == total_pages else '' }}">
+                            <a class="page-link" href="{{ url_for('accounts_payable', page=total_pages, search=request.args.get('search', ''), status=request.args.get('status', ''), category=request.args.get('category', '')) }}">&raquo;&raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -210,6 +274,108 @@
                 <button type="submit" form="payForm{{ item.id }}" class="btn btn-success">
                     <i class="bi bi-check-lg"></i> Confirmar Pagamento
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar -->
+<div class="modal fade" id="editModal{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil text-primary me-2"></i>Editar Conta a Pagar
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('edit_account_payable', payable_id=item.id) }}" method="POST" id="editForm{{ item.id }}">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Fornecedor *</label>
+                            <input type="text" class="form-control" name="supplier" value="{{ item.supplier }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Categoria *</label>
+                            <select class="form-select" name="category" required>
+                                <option value="Aluguel" {{ 'selected' if item.category == 'Aluguel' }}>Aluguel</option>
+                                <option value="Energia" {{ 'selected' if item.category == 'Energia' }}>Energia Elétrica</option>
+                                <option value="Água" {{ 'selected' if item.category == 'Água' }}>Água</option>
+                                <option value="Internet" {{ 'selected' if item.category == 'Internet' }}>Internet</option>
+                                <option value="Telefone" {{ 'selected' if item.category == 'Telefone' }}>Telefone</option>
+                                <option value="Folha de Pagamento" {{ 'selected' if item.category == 'Folha de Pagamento' }}>Folha de Pagamento</option>
+                                <option value="Fornecedores" {{ 'selected' if item.category == 'Fornecedores' }}>Fornecedores</option>
+                                <option value="Manutenção" {{ 'selected' if item.category == 'Manutenção' }}>Manutenção</option>
+                                <option value="Limpeza" {{ 'selected' if item.category == 'Limpeza' }}>Limpeza</option>
+                                <option value="Impostos" {{ 'selected' if item.category == 'Impostos' }}>Impostos</option>
+                                <option value="Seguros" {{ 'selected' if item.category == 'Seguros' }}>Seguros</option>
+                                <option value="Outros" {{ 'selected' if item.category == 'Outros' }}>Outros</option>
+                            </select>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Descrição *</label>
+                            <input type="text" class="form-control" name="description" value="{{ item.description }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Valor *</label>
+                            <div class="input-group">
+                                <span class="input-group-text">R$</span>
+                                <input type="number" class="form-control" name="amount" step="0.01" min="0.01" value="{{ item.amount }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Data de Vencimento *</label>
+                            <input type="date" class="form-control" name="due_date" value="{{ item.due_date_raw.strftime('%Y-%m-%d') if item.due_date_raw else '' }}" required>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Observações</label>
+                            <textarea class="form-control" name="notes" rows="2">{{ item.notes|default('') }}</textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Remover -->
+<div class="modal fade" id="deleteModal{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">
+                    <i class="bi bi-trash text-danger me-2"></i>Confirmar Remoção
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Atenção!</strong> Esta ação não pode ser desfeita.
+                </div>
+                <p class="mb-2">Tem certeza que deseja remover esta conta?</p>
+                <p class="mb-2">Fornecedor: <strong>{{ item.supplier }}</strong></p>
+                <p class="mb-2">Descrição: <strong>{{ item.description }}</strong></p>
+                <p class="mb-0">Valor: <strong class="text-danger">R$ {{ "%.2f"|format(item.amount|float) }}</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg"></i> Cancelar
+                </button>
+                <form action="{{ url_for('delete_account_payable', payable_id=item.id) }}" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Confirmar Remoção
+                    </button>
+                </form>
             </div>
         </div>
     </div>
@@ -284,4 +450,20 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Filtros em tempo real
+$('#status, #category').on('change', function() {
+    $(this).closest('form').submit();
+});
+
+$('#search').on('keypress', function(e) {
+    if (e.which === 13) {
+        e.preventDefault();
+        $(this).closest('form').submit();
+    }
+});
+</script>
 {% endblock %}
